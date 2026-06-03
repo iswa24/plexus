@@ -49,8 +49,25 @@ def _ask(q):
 def test_cheap_key_is_word_order_and_abbrev_invariant():
     assert cache.cheap_key("how many open P1 incidents by business unit") == \
         cache.cheap_key("list the open P1 incidents per business unit")
-    # abbreviation expansion: BU -> business unit
-    assert "business" in cache.cheap_key("incidents by BU").split()
+    # canonicalization: BU / business unit / division all fold to one token
+    assert "bu" in cache.cheap_key("incidents by BU").split()
+    assert cache.cheap_key("open incidents by BU") == \
+        cache.cheap_key("open incidents by division")
+
+
+def test_synonyms_and_filler_words_canonicalize_to_same_key():
+    base = cache.cheap_key("how many open P1 incidents by business unit")
+    # filler ("give me all available"), abbrev (BU), plural drop (incident)
+    assert cache.cheap_key("give me all open P1 incident by all available BU") == base
+    # synonyms: division == business unit, ticket == incident
+    assert cache.cheap_key("show all open P1 tickets per division") == base
+
+
+def test_open_closed_and_severity_never_collide():
+    assert cache.cheap_key("open P1 incidents by BU") != \
+        cache.cheap_key("closed P1 incidents by BU")
+    assert cache.cheap_key("open P1 incidents by BU") != \
+        cache.cheap_key("open P2 incidents by BU")
 
 
 def test_reworded_and_typo_question_is_free_cache_hit(monkeypatch):

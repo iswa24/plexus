@@ -1,0 +1,14 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "plexus",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": [
+        "-c",
+        "cd /Users/iswarya/jobsearch/plexus/backend && PLEXUS_DEMO_MODE=true PLEXUS_DB_PATH=/tmp/plexus_demo.db .venv/bin/uvicorn plexus.main:app --host 127.0.0.1 --port 8000"
+      ],
+      "port": 8000
+    }
+  ]
+}
