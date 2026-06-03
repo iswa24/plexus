@@ -23,6 +23,9 @@ class Edge(BaseModel):
     id: str
     source: str
     target: str
+    # Optional routing label. A flow.branch node marks which labelled edges are
+    # "live" (e.g. "true"/"false"); the executor prunes the untaken paths.
+    label: str = ""
 
 
 class AppSettings(BaseModel):

@@ -1,10 +1,24 @@
-"""DAG executor: topological order, @-ref resolution, per-node streaming."""
+"""DAG executor: dependency scheduler with concurrency, conditional branching,
+sub-agent delegation, and map/loop — all author-controlled and audited.
+
+The scheduler runs every node whose inputs are settled, as soon as they are
+settled, in parallel. A `flow.branch` node marks its outgoing edges live/pruned;
+nodes reachable only through pruned edges are skipped. `agent.call` runs another
+registered agent as a step (agent-of-agents), and `flow.foreach` maps a chosen
+agent over a list. @{ref} resolution and per-node streaming are unchanged.
+"""
 from __future__ import annotations
 
+import asyncio
+import json
 import re
 import time
 import uuid
 from typing import Any, Awaitable, Callable, Optional
+
+MAX_DEPTH = 5            # guard against an agent (in)directly calling itself forever
+FOREACH_CONCURRENCY = 5  # bound on parallel item runs in flow.foreach
+MAX_FOREACH = 25         # cap items mapped per run (logged when truncated)
 
 from .auth import Principal
 from .config import Settings
@@ -54,6 +68,7 @@ class RunContext:
         self.inputs = inputs or {}
         self.settings = settings
         self.principal = principal
+        self.depth = 0  # orchestration nesting depth (sub-agent calls)
         self.results: dict[str, dict] = {}
         self.nodes: dict[str, Node] = {n.id: n for n in app.nodes}
         # Map both the node id and the slugified label to the node id, so the
@@ -148,6 +163,12 @@ async def run_node(node: Node, ctx: RunContext, emit: Emit) -> dict[str, Any]:
         return await run_prompt(cfg, ctx, emit)
     if t == "action.webhook":
         return await run_action(cfg, ctx, emit)
+    if t == "flow.branch":
+        return await run_branch(cfg, ctx, emit)
+    if t == "agent.call":
+        return await run_call_agent(cfg, ctx, emit)
+    if t == "flow.foreach":
+        return await run_foreach(cfg, ctx, emit)
     if t == "output.text":
         return {"kind": "text", "value": ctx.resolve(cfg.get("template", ""), for_prompt=False)}
     if t == "output.document":
@@ -170,6 +191,161 @@ async def run_node(node: Node, ctx: RunContext, emit: Emit) -> dict[str, Any]:
     return {"kind": "text", "value": ""}
 
 
+# ---------------------------------------------------------------- control flow
+def _coerce(a: str, b: str):
+    """Try numeric comparison; fall back to case-insensitive strings."""
+    try:
+        return float(a), float(b)
+    except (TypeError, ValueError):
+        return (a or "").strip().lower(), (b or "").strip().lower()
+
+
+def _cmp(left: str, op: str, right: str) -> bool:
+    lo, ro = _coerce(left, right)
+    if op in ("==", "eq", "equals"):
+        return lo == ro
+    if op in ("!=", "ne"):
+        return lo != ro
+    if op in ("contains", "has"):
+        return str(right).strip().lower() in str(left).strip().lower()
+    if op in ("not_contains",):
+        return str(right).strip().lower() not in str(left).strip().lower()
+    try:
+        if op in (">", "gt"):
+            return lo > ro
+        if op in ("<", "lt"):
+            return lo < ro
+        if op in (">=", "ge"):
+            return lo >= ro
+        if op in ("<=", "le"):
+            return lo <= ro
+    except TypeError:
+        return False
+    return False
+
+
+async def run_branch(cfg: dict, ctx: "RunContext", emit: Emit) -> dict[str, Any]:
+    """Evaluate a condition and choose which outgoing edges are live.
+    Returns kind='branch' with an 'outcome' ('true'/'false') the scheduler reads."""
+    left = ctx.resolve(cfg.get("left", ""), for_prompt=False)
+    op = cfg.get("op", "==")
+    right = cfg.get("right", "")
+    outcome = "true" if _cmp(left, op, right) else "false"
+    summary = f'{left!r} {op} {right!r} → {outcome}'
+    out = {"kind": "branch", "outcome": outcome, "value": summary,
+           "left": left, "op": op, "right": right,
+           "steps": [{"type": "branch", "text": summary}]}
+    await emit({"output": out})
+    return out
+
+
+def _terminal_output(sub_app: AppDef, results: dict) -> dict:
+    """Pick the answer node of a sub-agent run (document > text > model/action)."""
+    types = {n.id: n.type for n in sub_app.nodes}
+    for pref in ("output.document", "output.text"):
+        for nid, o in results.items():
+            if types.get(nid) == pref and isinstance(o, dict) and (o.get("value") or o.get("rows")):
+                return o
+    for nid, o in results.items():
+        if types.get(nid, "").startswith(("model", "action")) and isinstance(o, dict):
+            return o
+    for o in results.values():
+        if isinstance(o, dict) and (o.get("value") or o.get("rows")):
+            return o
+    return {"kind": "text", "value": ""}
+
+
+async def _run_subapp(ctx: "RunContext", app_id: str, input_value: str):
+    """Run another registered agent as a step. Returns (terminal_output, name)."""
+    if ctx.depth >= MAX_DEPTH:
+        raise RuntimeError(f"orchestration depth limit ({MAX_DEPTH}) reached")
+    if not app_id:
+        raise RuntimeError("no agent selected for this node")
+    from .registry import Registry  # local import avoids cycles
+
+    stored = Registry(ctx.settings.db_path).get(app_id)
+    if not stored:
+        raise RuntimeError(f"agent '{app_id}' not found in registry")
+    sub = AppDef(**stored)
+    inp = next((n for n in sub.nodes if n.type.startswith("input")), None)
+    inputs = {inp.id: input_value} if (inp and input_value is not None) else {}
+
+    async def _silent(_frame: dict) -> None:  # sub-frames don't pollute the parent UI
+        return None
+
+    sub_results = await execute(sub, inputs, ctx.settings, ctx.principal,
+                               _silent, audit=None, _depth=ctx.depth + 1)
+    return _terminal_output(sub, sub_results), (sub.name or app_id)
+
+
+def _input_for(cfg: dict, ctx: "RunContext") -> str:
+    tmpl = cfg.get("input", "")
+    if tmpl:
+        return ctx.resolve(tmpl, for_prompt=True)
+    return ctx.first_input_text() or ""
+
+
+async def run_call_agent(cfg: dict, ctx: "RunContext", emit: Emit) -> dict[str, Any]:
+    """Supervisor primitive: delegate a step to a registered agent (agent-of-agents)."""
+    aid = cfg.get("agentId") or cfg.get("appId") or ""
+    val = _input_for(cfg, ctx)
+    out, name = await _run_subapp(ctx, aid, val)
+    out = dict(out)
+    out["delegated"] = name
+    out["steps"] = [{"type": "delegate", "agent": name, "input": (val or "")[:160]}] + out.get("steps", [])
+    await emit({"output": out})
+    return out
+
+
+def _ref_node_output(ctx: "RunContext", ref: str) -> Optional[dict]:
+    m = REF_RE.search(ref or "")
+    if not m:
+        return None
+    nid = ctx.ref_index.get(m.group(1).strip())
+    return ctx.results.get(nid) if nid else None
+
+
+def _item_text(it: Any) -> str:
+    if isinstance(it, dict):
+        return ", ".join(f"{k}={v}" for k, v in it.items())
+    return str(it)
+
+
+async def run_foreach(cfg: dict, ctx: "RunContext", emit: Emit) -> dict[str, Any]:
+    """Map a chosen agent over a list/rows ref; run items concurrently; collect."""
+    aid = cfg.get("agentId") or cfg.get("appId") or ""
+    src = _ref_node_output(ctx, cfg.get("items", ""))
+    items: list = []
+    if src and src.get("kind") == "rows":
+        field = cfg.get("itemField")
+        rows = src.get("rows", [])
+        items = [r.get(field) for r in rows] if field else rows
+    elif src:
+        items = [ln for ln in str(src.get("value", "")).splitlines() if ln.strip()]
+
+    truncated = len(items) > MAX_FOREACH
+    items = items[:MAX_FOREACH]
+    sem = asyncio.Semaphore(FOREACH_CONCURRENCY)
+    name_holder = {"name": aid}
+
+    async def _one(it: Any) -> dict:
+        async with sem:
+            out, name = await _run_subapp(ctx, aid, _item_text(it))
+            name_holder["name"] = name
+            val = out.get("value") if out.get("value") is not None else render_value(out, False)
+            return {"item": _item_text(it), "result": val}
+
+    rows = await asyncio.gather(*[_one(it) for it in items]) if items else []
+    step = {"type": "map", "agent": name_holder["name"], "count": len(rows)}
+    if truncated:
+        step["note"] = f"capped at {MAX_FOREACH} items"
+    out = {"kind": "rows", "columns": ["item", "result"], "rows": list(rows),
+           "steps": [step]}
+    await emit({"output": out})
+    return out
+
+
+# ---------------------------------------------------------------- scheduler
 async def execute(
     app: AppDef,
     inputs: dict,
@@ -177,68 +353,94 @@ async def execute(
     principal: Principal,
     emit: Emit,
     audit=None,
+    _depth: int = 0,
 ) -> dict[str, dict]:
     run_id = "run_" + uuid.uuid4().hex[:8]
     ctx = RunContext(app, inputs, settings, principal)
-    order = topo_sort(app)
+    ctx.depth = _depth
     await emit({"event": "run_start", "runId": run_id})
 
-    for nid in order:
-        node = ctx.nodes[nid]
-        await emit({"event": "node", "runId": run_id, "nodeId": nid, "status": "running"})
+    in_edges: dict[str, list] = {n.id: [] for n in app.nodes}
+    out_edges: dict[str, list] = {n.id: [] for n in app.nodes}
+    for e in app.edges:
+        if e.source in out_edges and e.target in in_edges:
+            out_edges[e.source].append(e)
+            in_edges[e.target].append(e)
+    estate = {e.id: "pending" for e in app.edges}   # pending | live | pruned
+    nstate = {n.id: "pending" for n in app.nodes}   # pending | running | done | skipped
+
+    def settle_outgoing(nid: str, out: dict) -> None:
+        is_branch = isinstance(out, dict) and out.get("kind") == "branch"
+        outcome = out.get("outcome") if is_branch else None
+        for e in out_edges[nid]:
+            if is_branch and e.label:
+                estate[e.id] = "live" if e.label == outcome else "pruned"
+            else:
+                estate[e.id] = "live"
+
+    def prune_outgoing(nid: str) -> None:
+        for e in out_edges[nid]:
+            estate[e.id] = "pruned"
+
+    async def exec_one(node: Node) -> dict:
+        await emit({"event": "node", "runId": run_id, "nodeId": node.id, "status": "running"})
         t0 = time.perf_counter()
 
-        async def node_emit(partial: dict, _nid=nid, _run=run_id) -> None:
-            # Connectors may stream a simple text delta ({"partial": "..."}) or a
-            # rich output object ({"output": {...}}, used by the agent trace).
+        async def node_emit(partial: dict, _nid=node.id) -> None:
             out = partial["output"] if "output" in partial else {
-                "kind": "text",
-                "value": partial.get("partial", ""),
-            }
-            await emit(
-                {
-                    "event": "node",
-                    "runId": _run,
-                    "nodeId": _nid,
-                    "status": "running",
-                    "output": out,
-                }
-            )
+                "kind": "text", "value": partial.get("partial", "")}
+            await emit({"event": "node", "runId": run_id, "nodeId": _nid,
+                        "status": "running", "output": out})
 
         try:
             out = await run_node(node, ctx, node_emit)
-            ctx.results[nid] = out
             ms = int((time.perf_counter() - t0) * 1000)
-            await emit(
-                {
-                    "event": "node",
-                    "runId": run_id,
-                    "nodeId": nid,
-                    "status": "done",
-                    "output": out,
-                    "ms": ms,
-                    "tokens": out.get("tokens"),
-                }
-            )
+            await emit({"event": "node", "runId": run_id, "nodeId": node.id,
+                        "status": "done", "output": out, "ms": ms,
+                        "tokens": out.get("tokens")})
             if audit:
-                audit.log(
-                    principal=principal.username,
-                    app_id=app.id or "",
-                    run_id=run_id,
-                    node_id=nid,
-                    node_type=node.type,
-                    detail={"config": node.config},
-                )
+                audit.log(principal=principal.username, app_id=app.id or "",
+                          run_id=run_id, node_id=node.id, node_type=node.type,
+                          detail={"config": node.config})
+            return out
         except Exception as exc:
-            await emit(
-                {
-                    "event": "node",
-                    "runId": run_id,
-                    "nodeId": nid,
-                    "status": "error",
-                    "error": str(exc),
-                }
-            )
+            await emit({"event": "node", "runId": run_id, "nodeId": node.id,
+                        "status": "error", "error": str(exc)})
+            return {"kind": "text", "value": "", "error": str(exc)}
+
+    while True:
+        # nodes whose every incoming edge has settled (or have none)
+        ready = [n for n in app.nodes if nstate[n.id] == "pending"
+                 and all(estate[e.id] != "pending" for e in in_edges[n.id])]
+        if not ready:
+            break
+        run_batch, skipped = [], []
+        for n in ready:
+            ins = in_edges[n.id]
+            live = (not ins) or any(estate[e.id] == "live" for e in ins)
+            if live:
+                nstate[n.id] = "running"
+                run_batch.append(n)
+            else:
+                nstate[n.id] = "skipped"
+                skipped.append(n)
+        for n in skipped:  # all inputs pruned → this node never runs
+            prune_outgoing(n.id)
+            await emit({"event": "node", "runId": run_id, "nodeId": n.id, "status": "skipped"})
+        if not run_batch:
+            continue
+        outs = await asyncio.gather(*[exec_one(n) for n in run_batch])  # parallel fan-out
+        for n, out in zip(run_batch, outs):
+            ctx.results[n.id] = out
+            nstate[n.id] = "done"
+            settle_outgoing(n.id, out)
+
+    # leftover pending nodes => part of a cycle; settle deterministically
+    leftover = [n for n in app.nodes if nstate[n.id] == "pending"]
+    for n in leftover:
+        out = await exec_one(n)
+        ctx.results[n.id] = out
+        nstate[n.id] = "done"
 
     await emit({"event": "run_complete", "runId": run_id})
     return ctx.results

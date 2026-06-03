@@ -727,6 +727,38 @@ const TYPES = {
     summary:n=>'⚡ '+(n.config.action||'action')+(((n.config.approved||[]).includes&&(n.config.approved||[]).includes('approved'))?' · approved':' · proposes only'),
     badge:'response · gated',
   },
+  'flow.branch': {
+    cat:'Orchestration', name:'Branch (if / else)', icon:'⑂', color:'#eab308',
+    defaults:{ left:'@{triage}', op:'contains', right:'P1' },
+    fields:[
+      {k:'left', t:'text', refs:true, label:'Value to test (type @ to reference a card)'},
+      {k:'op', t:'select', label:'Condition', options:['==','!=','contains','not_contains','>','<','>=','<=']},
+      {k:'right', t:'text', label:'Compare to'},
+    ],
+    summary:n=>'⑂ if '+oneline(n.config.left)+' '+(n.config.op||'==')+' '+(n.config.right||''),
+    badge:'true / false edges',
+  },
+  'agent.call': {
+    cat:'Orchestration', name:'Call Agent (sub-agent)', icon:'🧩', color:'#6366f1',
+    defaults:{ agentId:'', input:'@{question}' },
+    fields:[
+      {k:'agentId', t:'agentsel', label:'Agent to run (delegate to a registered agent)'},
+      {k:'input', t:'textarea', refs:true, label:'Input to pass (type @ to reference a card)'},
+    ],
+    summary:n=>'🧩 '+(agentName(n.config.agentId)||'(pick an agent)'),
+    badge:'agent-of-agents',
+  },
+  'flow.foreach': {
+    cat:'Orchestration', name:'For Each (map agent)', icon:'🔁', color:'#0ea5e9',
+    defaults:{ agentId:'', items:'@{incidents}', itemField:'' },
+    fields:[
+      {k:'items', t:'text', refs:true, label:'List / rows to map over (a @ reference)'},
+      {k:'itemField', t:'text', label:'Column to pass per row (blank = whole row)'},
+      {k:'agentId', t:'agentsel', label:'Agent to run for each item'},
+    ],
+    summary:n=>'🔁 map '+(agentName(n.config.agentId)||'agent')+' · '+oneline(n.config.items),
+    badge:'parallel map',
+  },
   'output.text': {
     cat:'Output', name:'Text Output', icon:'📄', color:'var(--pink)',
     defaults:{template:'## Analysis\n@{analysis}'},
@@ -755,7 +787,12 @@ const TYPES = {
     summary:n=>'{ } '+oneline(n.config.source),
   },
 };
-const PALETTE_ORDER = ['Input','Source','Sub-agents','Actions','Output'];
+const PALETTE_ORDER = ['Input','Source','Sub-agents','Orchestration','Actions','Output'];
+
+/* registered-agent cache (for the agent picker on agent.call / flow.foreach) */
+let _AGENTS=[];
+async function loadAgents(){ try{ _AGENTS=await apiJSON('/api/apps'); }catch(e){ _AGENTS=[]; } }
+function agentName(id){ const a=_AGENTS.find(x=>x.id===id); return a?(a.name||a.id):''; }
 
 /* ---------- helpers ---------- */
 function oneline(s){ s=(s||'').replace(/\s+/g,' ').trim(); return s.length>70?s.slice(0,70)+'…':s; }
@@ -1003,7 +1040,21 @@ function drawEdges(){
     p.setAttribute('d',wirePath(a,b)); p.setAttribute('fill','none');
     p.setAttribute('stroke',run?cssVar('--ok'):'#46536b'); p.setAttribute('stroke-width','2.5');
     if(run) p.setAttribute('stroke-dasharray','none');
-    g.appendChild(hit); g.appendChild(p); svg.appendChild(g);
+    g.appendChild(hit); g.appendChild(p);
+    if(e.label){  // branch routing label (true/false) — click to flip
+      const mx=(a.x+b.x)/2, my=(a.y+b.y)/2;
+      const isT=e.label==='true', col=isT?'#22c55e':'#ef4444';
+      const lbl=document.createElementNS('http://www.w3.org/2000/svg','text');
+      lbl.setAttribute('x',mx); lbl.setAttribute('y',my-4);
+      lbl.setAttribute('text-anchor','middle'); lbl.setAttribute('fill',col);
+      lbl.setAttribute('font-size','11'); lbl.setAttribute('font-weight','700');
+      lbl.style.cursor='pointer'; lbl.style.userSelect='none';
+      lbl.textContent=(isT?'✓ ':'✗ ')+e.label;
+      lbl.addEventListener('click',ev=>{ ev.stopPropagation();
+        e.label=isT?'false':'true'; markDirty(); drawEdges(); });
+      g.appendChild(lbl);
+    }
+    svg.appendChild(g);
   });
 }
 
@@ -1038,7 +1089,12 @@ function startWire(e,node){
       const tgt=el.dataset.id;
       if(tgt!==node.id && !state.edges.some(x=>x.source===node.id&&x.target===tgt)){
         if(!createsCycle(node.id,tgt)){
-          state.edges.push({id:uid('e'),source:node.id,target:tgt}); markDirty();
+          let label='';
+          if(node.type==='flow.branch'){  // first outgoing edge = true, next = false
+            label=state.edges.some(x=>x.source===node.id&&x.label==='true')?'false':'true';
+          }
+          state.edges.push({id:uid('e'),source:node.id,target:tgt,label}); markDirty();
+          if(node.type==='flow.branch') flashHint('⑂ labelled "'+label+'" — click the edge label to flip');
         } else { flashHint('⚠ that would create a loop'); }
       }
     }
@@ -1097,6 +1153,11 @@ function renderInspector(){
       h+=`<textarea class="${f.code?'code':''}" data-k="${f.k}" data-refs="${!!f.refs}">${esc(v)}</textarea>`;
     } else if(f.t==='select'){
       h+=`<select data-k="${f.k}">`+f.options.map(o=>`<option ${o===v?'selected':''}>${esc(o)}</option>`).join('')+`</select>`;
+    } else if(f.t==='agentsel'){
+      const opts=_AGENTS.filter(a=>a.id!==state.appId)  // don't let an agent call itself
+        .map(a=>`<option value="${esc(a.id)}" ${a.id===v?'selected':''}>${esc(a.name||a.id)}</option>`).join('');
+      h+=`<select data-k="${f.k}"><option value="">— pick a registered agent —</option>${opts}</select>`;
+      if(!_AGENTS.length) h+=`<div class="help">No saved agents yet — save some agents first, then they appear here.</div>`;
     } else if(f.t==='checks'){
       const arr=Array.isArray(v)?v:[];
       h+=`<div class="checks">`+f.options.map(o=>`<label class="chk"><input type="checkbox" data-k="${f.k}" data-opt="${o}" ${arr.includes(o)?'checked':''}/> ${esc(o)}</label>`).join('')+`</div>`;
@@ -1438,9 +1499,14 @@ function askAppend(line){ askLog.push(line); const el=document.getElementById('a
 
 const _AGENT_NAMES={'model.nl2sql':'Data Query Agent','model.cypher':'Graph Agent','model.classify':'Triage Agent',
   'model.detection':'Detection Agent','model.agent':'Investigation Agent','model.bedrock':'Analysis Agent',
-  'model.rag':'Knowledge Agent','model.prompt':'Analysis Agent','action.webhook':'Response Agent'};
+  'model.rag':'Knowledge Agent','model.prompt':'Analysis Agent','action.webhook':'Response Agent',
+  'agent.call':'Orchestrator','flow.foreach':'Orchestrator','flow.branch':'Orchestrator'};
 function genericAgentName(){ return genericNameForNodes(state.nodes); }
-function genericNameForNodes(nodes){ const m=(nodes||[]).find(n=>n.type.startsWith('model.')||n.type.startsWith('action.')); return (m&&_AGENT_NAMES[m.type])||'Agent'; }
+function genericNameForNodes(nodes){
+  // an orchestrated flow (calls sub-agents / branches / maps) reads as "Orchestrator"
+  if((nodes||[]).some(n=>n.type==='agent.call'||n.type==='flow.foreach'||n.type==='flow.branch')) return 'Orchestrator';
+  const m=(nodes||[]).find(n=>n.type.startsWith('model.')||n.type.startsWith('action.')); return (m&&_AGENT_NAMES[m.type])||'Agent';
+}
 
 /* ============================================================
    MODE TOGGLE + CHAT MODE (consumer)
@@ -1451,6 +1517,7 @@ function setMode(m){
   document.getElementById('modeChat').classList.toggle('active',m==='chat');
   document.getElementById('modeBuild').classList.toggle('active',m==='builder');
   if(m==='chat'){ ensureChatWelcome(); setTimeout(()=>{const t=document.getElementById('csPrompt');if(t)t.focus();},60); }
+  if(m==='builder'){ loadAgents().then(()=>{ if(state.sel) renderInspector(); }); }
 }
 function ensureChatWelcome(){
   const col=document.getElementById('csCol');
@@ -1516,7 +1583,8 @@ function switchToBuilder(){
   setTimeout(()=>{ openGenerate(); const g=document.getElementById('genPrompt'); if(g) g.value=q; },80);
 }
 const _METHOD={'model.rag':'RAG','model.nl2sql':'NL→SQL','model.cypher':'Graph','model.classify':'Classifier',
-  'model.detection':'Detection','model.agent':'Agent','model.prompt':'Model','model.bedrock':'Model','action.webhook':'Action'};
+  'model.detection':'Detection','model.agent':'Agent','model.prompt':'Model','model.bedrock':'Model','action.webhook':'Action',
+  'agent.call':'Orchestration','flow.foreach':'Orchestration','flow.branch':'Orchestration'};
 function methodLabel(node){ return (node&&_METHOD[node.type])||'Model'; }
 
 /* "How this was answered" — show the flow + method + the agent's trace (RAG sources, SQL, etc.) */
@@ -1674,7 +1742,7 @@ function toAppDef(){
     settings:{defaultModelId:'anthropic.claude-3-5-sonnet-20241022-v2:0', region:'us-east-1', streaming:true},
     nodes:state.nodes.map(n=>({id:n.id,type:n.type,label:n.config.label||TYPES[n.type].name,
       position:{x:n.x,y:n.y}, config:n.config})),
-    edges:state.edges.map(e=>({id:e.id,source:e.source,target:e.target})),
+    edges:state.edges.map(e=>({id:e.id,source:e.source,target:e.target,label:e.label||''})),
   };
 }
 function exportApp(){
@@ -1690,7 +1758,7 @@ function importApp(ev){
 function loadAppDef(def){
   document.getElementById('appName').value=def.name||'Untitled';
   state.nodes=(def.nodes||[]).map(n=>({id:n.id,type:n.type,x:n.position?.x||100,y:n.position?.y||100,config:n.config||{}}));
-  state.edges=(def.edges||[]).map(e=>({id:e.id||uid('e'),source:e.source,target:e.target}));
+  state.edges=(def.edges||[]).map(e=>({id:e.id||uid('e'),source:e.source,target:e.target,label:e.label||''}));
   state.results={}; state.sel=null; state.appId=def.id||null;
   const maxId=state.nodes.length+state.edges.length+5; state.idc=Math.max(state.idc,maxId);
   render(); renderInspector(); markClean();
@@ -1843,6 +1911,7 @@ async function refreshUsage(){
 }
 function boot(){
   buildPalette();
+  loadAgents();        // populate the agent picker for orchestration nodes
   loadSample();        // a flow waits in the builder
   setMode('chat');     // consumers land in Chat; engineers toggle to 🛠 Builder
   refreshUsage(); setInterval(refreshUsage, 4000);
