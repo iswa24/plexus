@@ -1,0 +1,973 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Plexus — weave data, models &amp; tools into agents</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%236366f1'/%3E%3Cstop offset='1' stop-color='%23ec4899'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='32' height='32' rx='8' fill='url(%23g)'/%3E%3Cg stroke='white' stroke-width='1.6' stroke-opacity='.85'%3E%3Cline x1='8' y1='10' x2='23' y2='8'/%3E%3Cline x1='8' y1='10' x2='13' y2='23'/%3E%3Cline x1='23' y1='8' x2='13' y2='23'/%3E%3Cline x1='23' y1='8' x2='24' y2='21'/%3E%3Cline x1='13' y1='23' x2='24' y2='21'/%3E%3C/g%3E%3Cg fill='white'%3E%3Ccircle cx='8' cy='10' r='2.6'/%3E%3Ccircle cx='23' cy='8' r='2.6'/%3E%3Ccircle cx='13' cy='23' r='2.6'/%3E%3Ccircle cx='24' cy='21' r='2.6'/%3E%3C/g%3E%3C/svg%3E" />
+<style>
+  :root{
+    --bg:#0b0f17; --panel:#11161f; --panel2:#161c28; --line:#222b3a;
+    --text:#e6edf6; --muted:#8b97a8; --accent:#6366f1; --accent2:#818cf8;
+    --ok:#22c55e; --warn:#f59e0b; --run:#38bdf8;
+    --blue:#3b82f6; --amber:#f59e0b; --green:#22c55e; --purple:#a855f7; --pink:#ec4899;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,Helvetica,Arial,sans-serif;}
+  button{font-family:inherit;cursor:pointer}
+  .app{display:flex;flex-direction:column;height:100vh;overflow:hidden}
+
+  /* top bar */
+  .topbar{display:flex;align-items:center;gap:12px;padding:10px 16px;
+    background:linear-gradient(180deg,#141a25,#0e131c);border-bottom:1px solid var(--line);z-index:30}
+  .brand{display:flex;align-items:center;gap:10px;font-weight:700;letter-spacing:.2px}
+  .brand .logo{width:26px;height:26px;border-radius:7px;
+    background:linear-gradient(135deg,var(--accent),var(--pink));display:grid;place-items:center;font-size:15px}
+  .brand small{font-weight:500;color:var(--muted)}
+  .app-name{background:var(--panel2);border:1px solid var(--line);color:var(--text);
+    border-radius:8px;padding:6px 10px;font-size:13px;width:240px}
+  .spacer{flex:1}
+  .btn{background:var(--panel2);border:1px solid var(--line);color:var(--text);
+    padding:7px 12px;border-radius:8px;font-size:13px;display:inline-flex;align-items:center;gap:6px}
+  .btn:hover{border-color:#33415a;background:#1b2230}
+  .btn.primary{background:linear-gradient(135deg,var(--accent),var(--accent2));border:none;font-weight:600}
+  .btn.primary:hover{filter:brightness(1.08)}
+  .btn.ghost{background:transparent}
+  .btn.danger:hover{border-color:#7f1d1d;color:#fca5a5}
+
+  /* layout */
+  .body{flex:1;display:flex;min-height:0}
+  .palette{width:208px;background:var(--panel);border-right:1px solid var(--line);
+    overflow-y:auto;padding:12px;flex-shrink:0}
+  .palette h4{margin:14px 6px 7px;font-size:11px;letter-spacing:.8px;text-transform:uppercase;color:var(--muted)}
+  .palette h4:first-child{margin-top:2px}
+  .pnode{display:flex;align-items:center;gap:9px;padding:9px 10px;margin-bottom:7px;
+    background:var(--panel2);border:1px solid var(--line);border-radius:9px;cursor:grab;font-size:13px;user-select:none}
+  .pnode:hover{border-color:#3a465c;transform:translateX(2px)}
+  .pnode:active{cursor:grabbing}
+  .pico{width:24px;height:24px;border-radius:6px;display:grid;place-items:center;font-size:13px;flex-shrink:0}
+
+  /* canvas */
+  .canvas-wrap{flex:1;position:relative;overflow:hidden;
+    background:
+      radial-gradient(circle at 1px 1px, #1c2533 1px, transparent 0) 0 0/22px 22px,
+      var(--bg);}
+  .canvas{position:absolute;inset:0;transform-origin:0 0}
+  .edges{position:absolute;top:0;left:0;overflow:visible;pointer-events:none;z-index:1}
+  .edges path.wire{fill:none;stroke:#46536b;stroke-width:2.5}
+  .hint{position:absolute;top:14px;left:50%;transform:translateX(-50%);
+    color:var(--muted);font-size:12.5px;background:rgba(17,22,31,.8);
+    padding:6px 14px;border-radius:20px;border:1px solid var(--line);z-index:5;pointer-events:none}
+  .zoombar{position:absolute;bottom:14px;left:14px;display:flex;gap:6px;z-index:6}
+  .zoombar button{width:30px;height:30px;border-radius:8px;background:var(--panel2);
+    border:1px solid var(--line);color:var(--text);font-size:15px;display:grid;place-items:center}
+
+  /* node */
+  .node{position:absolute;width:236px;background:var(--panel2);border:1px solid var(--line);
+    border-radius:12px;z-index:2;box-shadow:0 6px 22px rgba(0,0,0,.35);user-select:none}
+  .node.sel{border-color:var(--accent2);box-shadow:0 0 0 2px rgba(129,140,248,.35),0 8px 26px rgba(0,0,0,.45)}
+  .node .nhead{display:flex;align-items:center;gap:8px;padding:9px 11px;cursor:grab;
+    border-bottom:1px solid var(--line);border-radius:12px 12px 0 0}
+  .node .nhead:active{cursor:grabbing}
+  .nico{width:22px;height:22px;border-radius:6px;display:grid;place-items:center;font-size:12px;flex-shrink:0}
+  .ntitle{font-size:12.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+  .ntype{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px}
+  .nbody{padding:9px 11px;font-size:11.5px;color:var(--muted);min-height:20px;
+    max-height:160px;overflow:auto;line-height:1.45}
+  .nbody .summary{color:#aeb9c9;white-space:pre-wrap;word-break:break-word}
+  .status-dot{width:9px;height:9px;border-radius:50%;background:#3a4658;flex-shrink:0}
+  .status-dot.running{background:var(--run);box-shadow:0 0 0 0 rgba(56,189,248,.6);animation:pulse 1s infinite}
+  .status-dot.done{background:var(--ok)}
+  .status-dot.error{background:#ef4444}
+  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(56,189,248,.55)}70%{box-shadow:0 0 0 7px rgba(56,189,248,0)}100%{box-shadow:0 0 0 0 rgba(56,189,248,0)}}
+
+  /* ports */
+  .port{position:absolute;width:14px;height:14px;border-radius:50%;background:#0b0f17;
+    border:2px solid #5b6678;top:18px;z-index:3}
+  .port:hover{border-color:var(--accent2);background:var(--accent)}
+  .port.in{left:-8px}
+  .port.out{right:-8px}
+  .port.out{cursor:crosshair}
+
+  /* result rendering inside node */
+  .res-table{width:100%;border-collapse:collapse;font-size:10.5px;margin-top:4px}
+  .res-table th{text-align:left;color:var(--accent2);border-bottom:1px solid var(--line);padding:3px 6px;font-weight:600}
+  .res-table td{padding:3px 6px;border-bottom:1px solid #1b2230;color:#c4cdda}
+  .res-meta{font-size:10px;color:var(--muted);margin-top:5px;font-style:italic}
+
+  /* agent trace */
+  .ag-step{margin:3px 0;font-size:11px;line-height:1.45}
+  .ag-think{color:#9aa6b6}
+  .ag-call{color:#5eead4}
+  .ag-call .ag-code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:10px;color:#cbd5e1;
+    background:#0b0f17;border:1px solid var(--line);border-radius:5px;padding:3px 6px;margin-top:2px;
+    white-space:pre-wrap;word-break:break-word}
+  .ag-res{color:#7ee2a8;padding-left:8px}
+  .checks{display:flex;flex-direction:column;gap:7px}
+  .chk{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text);
+    text-transform:none;letter-spacing:0;font-weight:400;margin:0;cursor:pointer}
+  .chk input{width:auto}
+
+  /* config panel */
+  .inspector{width:340px;background:var(--panel);border-left:1px solid var(--line);
+    overflow-y:auto;flex-shrink:0;display:flex;flex-direction:column}
+  .insp-head{padding:13px 15px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:9px}
+  .insp-head .nico{width:26px;height:26px}
+  .insp-head h3{margin:0;font-size:14px}
+  .insp-body{padding:14px 15px;flex:1}
+  .field{margin-bottom:14px;position:relative}
+  .field label{display:block;font-size:11px;color:var(--muted);margin-bottom:5px;
+    text-transform:uppercase;letter-spacing:.5px;font-weight:600}
+  .field input,.field select,.field textarea{width:100%;background:var(--bg);border:1px solid var(--line);
+    color:var(--text);border-radius:8px;padding:8px 10px;font-size:13px;font-family:inherit}
+  .field textarea{resize:vertical;min-height:74px;line-height:1.5}
+  .field textarea.code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px}
+  .field input:focus,.field textarea:focus,.field select:focus{outline:none;border-color:var(--accent2)}
+  .field .help{font-size:10.5px;color:var(--muted);margin-top:4px}
+  .ref-pill{display:inline-block;background:rgba(99,102,241,.18);color:var(--accent2);
+    border:1px solid rgba(129,140,248,.3);border-radius:5px;padding:0 4px;font-size:11px}
+  .empty-insp{padding:40px 20px;text-align:center;color:var(--muted);font-size:13px;line-height:1.6}
+
+  /* @ autocomplete */
+  .ac{position:absolute;z-index:50;background:#1a2130;border:1px solid #33415a;border-radius:9px;
+    box-shadow:0 10px 30px rgba(0,0,0,.5);overflow:hidden;min-width:200px;max-height:220px;overflow-y:auto}
+  .ac-item{padding:8px 11px;font-size:12.5px;display:flex;align-items:center;gap:8px;cursor:pointer}
+  .ac-item:hover,.ac-item.act{background:rgba(99,102,241,.22)}
+  .ac-item .nico{width:18px;height:18px;font-size:10px}
+  .ac-item small{color:var(--muted);margin-left:auto;font-size:10px}
+
+  /* delete bar */
+  .insp-foot{padding:12px 15px;border-top:1px solid var(--line)}
+
+  /* run log toast */
+  .runlog{position:absolute;bottom:14px;right:14px;width:300px;max-height:200px;overflow-y:auto;
+    background:rgba(17,22,31,.95);border:1px solid var(--line);border-radius:11px;padding:10px 12px;
+    font-size:11.5px;z-index:7;display:none}
+  .runlog.show{display:block}
+  .runlog .ll{padding:3px 0;color:var(--muted);display:flex;gap:7px;align-items:baseline}
+  .runlog .ll b{color:var(--text);font-weight:600}
+  .runlog .t{color:var(--accent2);font-variant-numeric:tabular-nums;font-size:10px}
+  ::-webkit-scrollbar{width:9px;height:9px}
+  ::-webkit-scrollbar-thumb{background:#28323f;border-radius:6px}
+  ::-webkit-scrollbar-track{background:transparent}
+
+  /* save / library */
+  .btn.save{background:rgba(34,197,94,.14);border-color:rgba(34,197,94,.4);color:#7ee2a8}
+  .btn.save:hover{background:rgba(34,197,94,.22)}
+  .saved-tag{font-size:11px;color:var(--muted);margin-left:2px;white-space:nowrap}
+  .saved-tag b{color:#7ee2a8}
+  .modal-bg{position:fixed;inset:0;background:rgba(4,7,12,.66);backdrop-filter:blur(3px);
+    z-index:100;display:none;align-items:flex-start;justify-content:center;padding-top:8vh}
+  .modal-bg.show{display:flex}
+  .modal{width:560px;max-width:92vw;max-height:78vh;background:var(--panel);border:1px solid var(--line);
+    border-radius:14px;box-shadow:0 24px 70px rgba(0,0,0,.6);display:flex;flex-direction:column;overflow:hidden}
+  .modal-head{display:flex;align-items:center;padding:15px 18px;border-bottom:1px solid var(--line)}
+  .modal-head h3{margin:0;font-size:15px;flex:1}
+  .modal-body{padding:12px 14px;overflow-y:auto}
+  .applist-empty{padding:36px 20px;text-align:center;color:var(--muted);font-size:13px;line-height:1.6}
+  .approw{display:flex;align-items:center;gap:12px;padding:11px 12px;border:1px solid var(--line);
+    border-radius:10px;margin-bottom:8px;background:var(--panel2)}
+  .approw:hover{border-color:#3a465c}
+  .approw .ai{width:34px;height:34px;border-radius:8px;background:linear-gradient(135deg,var(--accent),var(--pink));
+    display:grid;place-items:center;font-size:15px;flex-shrink:0}
+  .approw .am{flex:1;min-width:0}
+  .approw .an{font-size:13.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .approw .ad{font-size:11px;color:var(--muted);margin-top:2px}
+  .approw.current{border-color:rgba(34,197,94,.45)}
+  .approw.current .an::after{content:' · open';color:#7ee2a8;font-weight:500}
+  .approw .act{display:flex;gap:6px}
+  .iconbtn{background:var(--bg);border:1px solid var(--line);color:var(--muted);border-radius:7px;
+    width:30px;height:30px;display:grid;place-items:center;font-size:13px}
+  .iconbtn:hover{color:var(--text);border-color:#3a465c}
+  .iconbtn.del:hover{color:#fca5a5;border-color:#7f1d1d}
+  .toast{position:fixed;bottom:26px;left:50%;transform:translateX(-50%) translateY(20px);
+    background:#16321f;border:1px solid rgba(34,197,94,.45);color:#bff0d0;padding:10px 18px;
+    border-radius:10px;font-size:13px;z-index:200;opacity:0;transition:.25s;pointer-events:none}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="topbar">
+    <div class="brand">
+      <div class="logo"><svg width="17" height="17" viewBox="0 0 32 32" fill="none">
+        <g stroke="#fff" stroke-width="1.7" stroke-opacity=".85">
+          <line x1="8" y1="10" x2="23" y2="8"/><line x1="8" y1="10" x2="13" y2="23"/>
+          <line x1="23" y1="8" x2="13" y2="23"/><line x1="23" y1="8" x2="24" y2="21"/>
+          <line x1="13" y1="23" x2="24" y2="21"/>
+        </g>
+        <g fill="#fff"><circle cx="8" cy="10" r="2.6"/><circle cx="23" cy="8" r="2.6"/>
+          <circle cx="13" cy="23" r="2.6"/><circle cx="24" cy="21" r="2.6"/></g>
+      </svg></div>
+      <div>Plexus <small>· agent studio</small></div>
+    </div>
+    <input class="app-name" id="appName" value="Incident Triage Assistant" oninput="markDirty()" />
+    <span class="saved-tag" id="savedTag"></span>
+    <div class="spacer"></div>
+    <button class="btn ghost" onclick="newApp()">＋ New</button>
+    <button class="btn ghost" onclick="loadSample()">↻ Sample</button>
+    <button class="btn save" id="saveBtn" onclick="saveCurrentApp()">💾 Save</button>
+    <button class="btn ghost" onclick="openLibrary()">📁 My Apps</button>
+    <button class="btn ghost" onclick="exportApp()">⤓ Export</button>
+    <button class="btn ghost" onclick="document.getElementById('importFile').click()">⤒ Import</button>
+    <input type="file" id="importFile" accept=".json" style="display:none" onchange="importApp(event)"/>
+    <button class="btn primary" id="runBtn" onclick="runApp()">▶ Run</button>
+  </div>
+
+  <div class="body">
+    <!-- palette -->
+    <div class="palette" id="palette"></div>
+
+    <!-- canvas -->
+    <div class="canvas-wrap" id="canvasWrap">
+      <div class="hint" id="hint">Drag cards from the left · drag a node's right ● into another's left ● to wire · click a node to configure</div>
+      <div class="canvas" id="canvas">
+        <svg class="edges" id="edges" width="10000" height="8000"></svg>
+      </div>
+      <div class="zoombar">
+        <button onclick="zoomBy(1.15)">+</button>
+        <button onclick="zoomBy(0.87)">−</button>
+        <button onclick="resetView()" title="Fit">⤢</button>
+      </div>
+      <div class="runlog" id="runlog"></div>
+    </div>
+
+    <!-- inspector -->
+    <div class="inspector" id="inspector">
+      <div class="empty-insp">Select a node to configure it.<br/><br/>
+        In any <span class="ref-pill">SQL</span>, <span class="ref-pill">Cypher</span> or
+        <span class="ref-pill">prompt</span> field, type <b>@</b> to reference another card's output.</div>
+    </div>
+  </div>
+
+  <!-- My Apps library -->
+  <div class="modal-bg" id="libModal" onclick="if(event.target===this)closeLibrary()">
+    <div class="modal">
+      <div class="modal-head">
+        <h3>📁 My Apps</h3>
+        <button class="btn ghost" onclick="closeLibrary()">✕</button>
+      </div>
+      <div class="modal-body" id="libList"></div>
+    </div>
+  </div>
+  <div class="toast" id="toast"></div>
+</div>
+
+<script>
+/* ============================================================
+   NODE TYPE REGISTRY
+   Each type: category, display name, icon, color, default config,
+   inspector field schema, and a card-body summary renderer.
+   ============================================================ */
+const TYPES = {
+  'input.text': {
+    cat:'Input', name:'Text Input', icon:'⌨', color:'var(--blue)',
+    defaults:{label:'User question', placeholder:'Ask a question…', value:'P1 phishing incidents in the last 24h'},
+    fields:[
+      {k:'label', t:'text', label:'Label'},
+      {k:'placeholder', t:'text', label:'Placeholder'},
+      {k:'value', t:'text', label:'Default value (used at run)'},
+    ],
+    summary:n=>'▸ '+(n.config.label||'Text input'),
+  },
+  'input.dropdown': {
+    cat:'Input', name:'Dropdown', icon:'▾', color:'var(--blue)',
+    defaults:{label:'Severity', options:'P1, P2, P3', value:'P1'},
+    fields:[
+      {k:'label', t:'text', label:'Label'},
+      {k:'options', t:'text', label:'Options (comma separated)'},
+      {k:'value', t:'text', label:'Selected value'},
+    ],
+    summary:n=>'▾ '+(n.config.label||'Dropdown')+': '+(n.config.value||''),
+  },
+  'source.trino': {
+    cat:'Source', name:'Trino Query', icon:'🗄', color:'var(--amber)',
+    defaults:{catalog:'hive', schema:'security', maxRows:500,
+      sql:"SELECT id, severity, owner, ts\nFROM incidents\nWHERE severity = @{severity}\nORDER BY ts DESC"},
+    fields:[
+      {k:'catalog', t:'text', label:'Catalog'},
+      {k:'schema', t:'text', label:'Schema'},
+      {k:'sql', t:'textarea', code:true, refs:true, label:'SQL (type @ to reference inputs)'},
+      {k:'maxRows', t:'number', label:'Max rows'},
+    ],
+    summary:n=>(n.config.catalog||'')+'.'+(n.config.schema||'')+'\n'+oneline(n.config.sql),
+    badge:'OAuth · OBO',
+  },
+  'source.neo4j': {
+    cat:'Source', name:'Neo4j (Cypher)', icon:'🕸', color:'var(--green)',
+    defaults:{query:"MATCH (i:Incident)-[r]-(e)\nWHERE i.id IN @{incidents}\nRETURN e.name AS entity, labels(e)[0] AS type, type(r) AS rel\nLIMIT 50"},
+    fields:[
+      {k:'query', t:'textarea', code:true, refs:true, label:'Cypher (type @ to reference upstream)'},
+    ],
+    summary:n=>oneline(n.config.query),
+    badge:'graph',
+  },
+  'model.bedrock': {
+    cat:'Model', name:'Bedrock LLM', icon:'✦', color:'var(--purple)',
+    defaults:{
+      modelId:'anthropic.claude-3-5-sonnet-20241022-v2:0',
+      system:'You are a senior security analyst. Be concise and actionable.',
+      prompt:"User asked: @{question}\n\nIncidents from the warehouse:\n@{incidents}\n\nRelated graph entities:\n@{graph}\n\nSummarize the risk and recommend next steps.",
+      temperature:0.2, maxTokens:1500},
+    fields:[
+      {k:'modelId', t:'select', label:'Model', options:[
+        'anthropic.claude-3-5-sonnet-20241022-v2:0',
+        'anthropic.claude-3-5-haiku-20241022-v1:0',
+        'anthropic.claude-3-opus-20240229-v1:0',
+        'amazon.nova-pro-v1:0',
+        'amazon.titan-text-premier-v1:0',
+        'meta.llama3-1-70b-instruct-v1:0',
+      ]},
+      {k:'system', t:'textarea', label:'System prompt'},
+      {k:'prompt', t:'textarea', refs:true, label:'Prompt (type @ to reference cards)'},
+      {k:'temperature', t:'number', label:'Temperature', step:0.1},
+      {k:'maxTokens', t:'number', label:'Max tokens'},
+    ],
+    summary:n=>'✦ '+shortModel(n.config.modelId)+'\n'+oneline(n.config.prompt),
+    badge:'Bedrock',
+  },
+  'model.agent': {
+    cat:'Model', name:'Agent (tools)', icon:'🤖', color:'#14b8a6',
+    defaults:{
+      modelId:'anthropic.claude-3-5-sonnet-20241022-v2:0',
+      system:'You are a security analyst agent. Use the tools to gather evidence, then give a concise risk summary with recommended actions.',
+      goal:'@{question}',
+      tools:['trino','neo4j'],
+      catalog:'hive', schema:'security',
+      maxSteps:5, temperature:0.2, maxTokens:1500},
+    fields:[
+      {k:'modelId', t:'select', label:'Model', options:[
+        'anthropic.claude-3-5-sonnet-20241022-v2:0',
+        'anthropic.claude-3-5-haiku-20241022-v1:0',
+        'anthropic.claude-3-opus-20240229-v1:0',
+        'amazon.nova-pro-v1:0',
+        'meta.llama3-1-70b-instruct-v1:0',
+      ]},
+      {k:'goal', t:'textarea', refs:true, label:'Goal / task (type @ to reference cards)'},
+      {k:'tools', t:'checks', label:'Tools the agent may call', options:['trino','neo4j']},
+      {k:'system', t:'textarea', label:'System prompt'},
+      {k:'maxSteps', t:'number', label:'Max reasoning steps'},
+      {k:'temperature', t:'number', label:'Temperature', step:0.1},
+    ],
+    summary:n=>'🤖 agent · tools: '+((n.config.tools||[]).join(', ')||'none')+'\n'+oneline(n.config.goal),
+    badge:'tool-use loop',
+  },
+  'output.text': {
+    cat:'Output', name:'Text Output', icon:'📄', color:'var(--pink)',
+    defaults:{template:'## Analysis\n@{analysis}'},
+    fields:[{k:'template', t:'textarea', refs:true, label:'Template (type @ to insert results)'}],
+    summary:n=>oneline(n.config.template),
+  },
+  'output.table': {
+    cat:'Output', name:'Table Output', icon:'▦', color:'var(--pink)',
+    defaults:{source:'@{incidents}'},
+    fields:[{k:'source', t:'text', refs:true, label:'Source (a @ reference to rows)'}],
+    summary:n=>'▦ '+oneline(n.config.source),
+  },
+};
+const PALETTE_ORDER = ['Input','Source','Model','Output'];
+
+/* ---------- helpers ---------- */
+function oneline(s){ s=(s||'').replace(/\s+/g,' ').trim(); return s.length>70?s.slice(0,70)+'…':s; }
+function shortModel(m){ if(!m)return''; if(m.includes('claude'))return m.split('.')[1].replace(/-\d.*/,'').replace('claude','Claude ');
+  return m.split('.')[1]?.split('-')[0]||m; }
+function esc(s){ return (s+'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function cssVar(v){ return v.startsWith('var(')? getComputedStyle(document.documentElement).getPropertyValue(v.slice(4,-1)).trim() : v; }
+function uid(p){ return p+'_'+(state.idc++).toString(36); }
+
+/* ============================================================
+   STATE
+   ============================================================ */
+const state = {
+  nodes:[], edges:[], sel:null, idc:1,
+  view:{x:80,y:60,scale:1},
+  results:{}, running:false,
+  appId:null, savedAt:null, dirty:false,
+};
+
+/* ============================================================
+   PALETTE
+   ============================================================ */
+function buildPalette(){
+  const p=document.getElementById('palette'); p.innerHTML='';
+  PALETTE_ORDER.forEach(cat=>{
+    const h=document.createElement('h4'); h.textContent=cat; p.appendChild(h);
+    Object.entries(TYPES).filter(([,d])=>d.cat===cat).forEach(([type,d])=>{
+      const el=document.createElement('div'); el.className='pnode'; el.draggable=true;
+      el.innerHTML=`<span class="pico" style="background:${hex(d.color)}22;color:${hex(d.color)}">${d.icon}</span>${d.name}`;
+      el.addEventListener('dragstart',e=>e.dataTransfer.setData('type',type));
+      p.appendChild(el);
+    });
+  });
+}
+function hex(v){ return cssVar(v); }
+
+/* drop onto canvas */
+const wrap=document.getElementById('canvasWrap');
+wrap.addEventListener('dragover',e=>e.preventDefault());
+wrap.addEventListener('drop',e=>{
+  e.preventDefault();
+  const type=e.dataTransfer.getData('type'); if(!type)return;
+  const {x,y}=screenToWorld(e.clientX,e.clientY);
+  addNode(type, x-118, y-20);
+});
+
+/* ============================================================
+   NODE CRUD
+   ============================================================ */
+function addNode(type,x,y){
+  const d=TYPES[type];
+  const node={ id:uid(type.split('.')[1]), type, x:Math.round(x), y:Math.round(y),
+    config:JSON.parse(JSON.stringify(d.defaults)) };
+  state.nodes.push(node); markDirty(); render(); select(node.id);
+  return node;
+}
+function deleteNode(id){
+  state.nodes=state.nodes.filter(n=>n.id!==id);
+  state.edges=state.edges.filter(e=>e.source!==id&&e.target!==id);
+  delete state.results[id];
+  if(state.sel===id) state.sel=null;
+  markDirty(); render(); renderInspector();
+}
+function select(id){ state.sel=id; render(); renderInspector(); }
+
+/* ============================================================
+   COORDINATE TRANSFORM
+   ============================================================ */
+function screenToWorld(sx,sy){
+  const r=wrap.getBoundingClientRect();
+  return { x:(sx-r.left-state.view.x)/state.view.scale, y:(sy-r.top-state.view.y)/state.view.scale };
+}
+function applyView(){
+  document.getElementById('canvas').style.transform=
+    `translate(${state.view.x}px,${state.view.y}px) scale(${state.view.scale})`;
+}
+function zoomBy(f){
+  const r=wrap.getBoundingClientRect(), cx=r.width/2, cy=r.height/2;
+  const wx=(cx-state.view.x)/state.view.scale, wy=(cy-state.view.y)/state.view.scale;
+  state.view.scale=Math.min(2,Math.max(.35,state.view.scale*f));
+  state.view.x=cx-wx*state.view.scale; state.view.y=cy-wy*state.view.scale;
+  applyView(); drawEdges();
+}
+function resetView(){
+  if(!state.nodes.length){ state.view={x:80,y:60,scale:1}; applyView(); drawEdges(); return; }
+  const pad=50, NH=150;
+  let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;
+  state.nodes.forEach(n=>{ minX=Math.min(minX,n.x); minY=Math.min(minY,n.y);
+    maxX=Math.max(maxX,n.x+NODE_W); maxY=Math.max(maxY,n.y+NH); });
+  const r=wrap.getBoundingClientRect();
+  const sc=Math.min(1, (r.width-pad*2)/(maxX-minX), (r.height-pad*2)/(maxY-minY));
+  state.view.scale=Math.max(.35,sc);
+  state.view.x=pad - minX*state.view.scale + (r.width-pad*2-(maxX-minX)*state.view.scale)/2;
+  state.view.y=pad - minY*state.view.scale;
+  applyView(); drawEdges();
+}
+wrap.addEventListener('wheel',e=>{ if(e.ctrlKey||e.metaKey){e.preventDefault(); zoomBy(e.deltaY<0?1.1:0.9);} },{passive:false});
+
+/* ============================================================
+   PORTS / EDGE GEOMETRY
+   ============================================================ */
+const NODE_W=236, PORT_Y=18+7; // header port center
+function portPos(node,kind){ return { x: node.x + (kind==='out'?NODE_W:0), y: node.y+PORT_Y }; }
+function wirePath(a,b){
+  const dx=Math.max(45,Math.abs(b.x-a.x)/2);
+  return `M ${a.x} ${a.y} C ${a.x+dx} ${a.y}, ${b.x-dx} ${b.y}, ${b.x} ${b.y}`;
+}
+
+/* ============================================================
+   RENDER
+   ============================================================ */
+function render(){
+  applyView();
+  const cv=document.getElementById('canvas');
+  // remove existing node DOM (keep svg)
+  [...cv.querySelectorAll('.node')].forEach(n=>n.remove());
+  state.nodes.forEach(renderNode);
+  drawEdges();
+  document.getElementById('hint').style.display=state.nodes.length?'none':'block';
+}
+function renderNode(node){
+  const d=TYPES[node.type];
+  const el=document.createElement('div');
+  el.className='node'+(state.sel===node.id?' sel':'');
+  el.style.left=node.x+'px'; el.style.top=node.y+'px'; el.dataset.id=node.id;
+  const r=state.results[node.id];
+  const st=r?r.status:'idle';
+  el.innerHTML=`
+    <div class="nhead" style="background:linear-gradient(180deg,${hex(d.color)}1a,transparent)">
+      <span class="nico" style="background:${hex(d.color)}22;color:${hex(d.color)}">${d.icon}</span>
+      <div style="flex:1;min-width:0">
+        <div class="ntitle">${esc(node.config.label||d.name)}</div>
+        <div class="ntype">${node.type}${d.badge?' · '+d.badge:''}</div>
+      </div>
+      <span class="status-dot ${st}"></span>
+    </div>
+    <div class="nbody">${r?renderResult(node,r):'<div class="summary">'+esc(d.summary(node))+'</div>'}</div>
+    <div class="port in" data-id="${node.id}" data-kind="in"></div>
+    <div class="port out" data-id="${node.id}" data-kind="out"></div>`;
+  document.getElementById('canvas').appendChild(el);
+
+  // node select + drag (from header)
+  const head=el.querySelector('.nhead');
+  head.addEventListener('mousedown',e=>{ if(e.target.classList.contains('port'))return; startNodeDrag(e,node,el); });
+  el.addEventListener('mousedown',()=>select(node.id));
+  // ports
+  el.querySelector('.port.out').addEventListener('mousedown',e=>{ e.stopPropagation(); startWire(e,node); });
+}
+
+function renderResult(node,r){
+  if(r.status==='running' && !r.output) return '<span class="status-dot running" style="display:inline-block;margin-right:6px"></span>running…';
+  if(r.status==='error') return '<span style="color:#fca5a5">⚠ '+esc(r.error||'error')+'</span>';
+  const o=r.output; if(o==null) return '…';
+  let html='';
+  if(o.kind==='agent'){
+    (o.steps||[]).forEach(s=>{
+      if(s.type==='think') html+=`<div class="ag-step ag-think">💭 ${esc(s.text)}</div>`;
+      else if(s.type==='tool_call') html+=`<div class="ag-step ag-call">🔧 <b>${esc(s.tool)}</b><div class="ag-code">${esc(s.input)}</div></div>`;
+      else if(s.type==='tool_result') html+=`<div class="ag-step ag-res">↳ ${esc(s.summary)}</div>`;
+    });
+    if(o.value) html+='<div class="summary" style="margin-top:6px;border-top:1px solid var(--line);padding-top:6px">'+esc(o.value)+(r.status==='running'?'▍':'')+'</div>';
+    const calls=(o.steps||[]).filter(s=>s.type==='tool_call').length;
+    if(r.status==='done') html+=`<div class="res-meta">${o.tokens||r.tokens||'?'} tokens · ${r.ms}ms · ${calls} tool call${calls===1?'':'s'}</div>`;
+    return html;
+  }
+  if(o.kind==='rows'){
+    const cols=o.columns||Object.keys(o.rows[0]||{});
+    html='<table class="res-table"><tr>'+cols.map(c=>`<th>${esc(c)}</th>`).join('')+'</tr>'+
+      o.rows.slice(0,4).map(row=>'<tr>'+cols.map(c=>`<td>${esc(row[c])}</td>`).join('')+'</tr>').join('')+'</table>'+
+      `<div class="res-meta">${o.rows.length} rows · ${r.ms}ms</div>`;
+  } else {
+    html='<div class="summary">'+esc(o.value||'')+(r.status==='running'?'▍':'')+'</div>'+
+      (r.tokens?`<div class="res-meta">${r.tokens} tokens · ${r.ms}ms</div>`:'');
+  }
+  return html;
+}
+
+function drawEdges(){
+  const svg=document.getElementById('edges');
+  [...svg.querySelectorAll('g')].forEach(g=>g.remove());
+  const byId=Object.fromEntries(state.nodes.map(n=>[n.id,n]));
+  state.edges.forEach(e=>{
+    const s=byId[e.source], t=byId[e.target]; if(!s||!t)return;
+    const a=portPos(s,'out'), b=portPos(t,'in');
+    const run=state.results[e.source]&&state.results[e.source].status==='done';
+    const g=document.createElementNS('http://www.w3.org/2000/svg','g');
+    const hit=document.createElementNS('http://www.w3.org/2000/svg','path');
+    hit.setAttribute('d',wirePath(a,b)); hit.setAttribute('fill','none');
+    hit.setAttribute('stroke','transparent'); hit.setAttribute('stroke-width','14');
+    hit.style.pointerEvents='stroke'; hit.style.cursor='pointer';
+    hit.addEventListener('click',()=>{ state.edges=state.edges.filter(x=>x.id!==e.id); markDirty(); render(); });
+    const p=document.createElementNS('http://www.w3.org/2000/svg','path');
+    p.setAttribute('d',wirePath(a,b)); p.setAttribute('fill','none');
+    p.setAttribute('stroke',run?cssVar('--ok'):'#46536b'); p.setAttribute('stroke-width','2.5');
+    if(run) p.setAttribute('stroke-dasharray','none');
+    g.appendChild(hit); g.appendChild(p); svg.appendChild(g);
+  });
+}
+
+/* ============================================================
+   INTERACTIONS: node drag, wiring, pan
+   ============================================================ */
+function startNodeDrag(e,node,el){
+  e.preventDefault();
+  const start=screenToWorld(e.clientX,e.clientY), ox=node.x-start.x, oy=node.y-start.y;
+  function mv(ev){ const w=screenToWorld(ev.clientX,ev.clientY);
+    node.x=Math.round(w.x+ox); node.y=Math.round(w.y+oy);
+    el.style.left=node.x+'px'; el.style.top=node.y+'px'; drawEdges(); }
+  function up(){ markDirty(); document.removeEventListener('mousemove',mv); document.removeEventListener('mouseup',up); }
+  document.addEventListener('mousemove',mv); document.addEventListener('mouseup',up);
+}
+
+let tempWire=null;
+function startWire(e,node){
+  e.preventDefault();
+  const a=portPos(node,'out');
+  const svg=document.getElementById('edges');
+  tempWire=document.createElementNS('http://www.w3.org/2000/svg','path');
+  tempWire.setAttribute('fill','none'); tempWire.setAttribute('stroke',cssVar('--accent2'));
+  tempWire.setAttribute('stroke-width','2.5'); tempWire.setAttribute('stroke-dasharray','5 4');
+  svg.appendChild(tempWire);
+  function mv(ev){ const b=screenToWorld(ev.clientX,ev.clientY); tempWire.setAttribute('d',wirePath(a,b)); }
+  function up(ev){
+    document.removeEventListener('mousemove',mv); document.removeEventListener('mouseup',up);
+    tempWire.remove(); tempWire=null;
+    const el=document.elementFromPoint(ev.clientX,ev.clientY);
+    if(el&&el.classList.contains('port')&&el.dataset.kind==='in'){
+      const tgt=el.dataset.id;
+      if(tgt!==node.id && !state.edges.some(x=>x.source===node.id&&x.target===tgt)){
+        if(!createsCycle(node.id,tgt)){
+          state.edges.push({id:uid('e'),source:node.id,target:tgt}); markDirty();
+        } else { flashHint('⚠ that would create a loop'); }
+      }
+    }
+    render();
+  }
+  document.addEventListener('mousemove',mv); document.addEventListener('mouseup',up);
+}
+function createsCycle(src,tgt){ // would adding src->tgt create a cycle? (i.e. is src reachable from tgt)
+  const adj={}; state.edges.forEach(e=>(adj[e.source]=adj[e.source]||[]).push(e.target));
+  const seen=new Set(); const stack=[tgt];
+  while(stack.length){ const n=stack.pop(); if(n===src)return true; if(seen.has(n))continue; seen.add(n);
+    (adj[n]||[]).forEach(m=>stack.push(m)); }
+  return false;
+}
+
+/* pan canvas on background drag */
+wrap.addEventListener('mousedown',e=>{
+  if(e.target!==wrap && e.target.id!=='canvas' && e.target.tagName!=='svg' && e.target.tagName!=='path') return;
+  if(e.target.tagName==='path' && e.target.style.cursor==='pointer') return;
+  if(e.target.id==='canvas'||e.target===wrap||e.target.tagName==='svg'){
+    state.sel=null; renderInspector(); render();
+    const sx=e.clientX-state.view.x, sy=e.clientY-state.view.y;
+    function mv(ev){ state.view.x=ev.clientX-sx; state.view.y=ev.clientY-sy; applyView(); }
+    function up(){ document.removeEventListener('mousemove',mv); document.removeEventListener('mouseup',up); }
+    document.addEventListener('mousemove',mv); document.addEventListener('mouseup',up);
+  }
+});
+
+document.addEventListener('keydown',e=>{
+  if((e.key==='Delete'||e.key==='Backspace')&&state.sel&&document.activeElement.tagName!=='INPUT'
+     &&document.activeElement.tagName!=='TEXTAREA'&&document.activeElement.tagName!=='SELECT'){
+    deleteNode(state.sel);
+  }
+});
+
+function flashHint(msg){ const h=document.getElementById('hint'); h.textContent=msg; h.style.display='block';
+  setTimeout(()=>{ h.style.display=state.nodes.length?'none':'block';
+    h.textContent="Drag cards from the left · drag a node's right ● into another's left ● to wire · click a node to configure"; },1600); }
+
+/* ============================================================
+   INSPECTOR (config panel) + @ autocomplete
+   ============================================================ */
+function renderInspector(){
+  const ins=document.getElementById('inspector');
+  const node=state.nodes.find(n=>n.id===state.sel);
+  if(!node){ ins.innerHTML='<div class="empty-insp">Select a node to configure it.<br/><br/>In any '+
+    '<span class="ref-pill">SQL</span>, <span class="ref-pill">Cypher</span> or <span class="ref-pill">prompt</span>'+
+    ' field, type <b>@</b> to reference another card\'s output.</div>'; return; }
+  const d=TYPES[node.type];
+  let h=`<div class="insp-head"><span class="nico" style="background:${hex(d.color)}22;color:${hex(d.color)}">${d.icon}</span>
+    <div><h3>${d.name}</h3><div class="ntype">${node.id}</div></div></div><div class="insp-body">`;
+  d.fields.forEach(f=>{
+    const v=node.config[f.k]??'';
+    h+=`<div class="field"><label>${f.label||f.k}</label>`;
+    if(f.t==='textarea'){
+      h+=`<textarea class="${f.code?'code':''}" data-k="${f.k}" data-refs="${!!f.refs}">${esc(v)}</textarea>`;
+    } else if(f.t==='select'){
+      h+=`<select data-k="${f.k}">`+f.options.map(o=>`<option ${o===v?'selected':''}>${esc(o)}</option>`).join('')+`</select>`;
+    } else if(f.t==='checks'){
+      const arr=Array.isArray(v)?v:[];
+      h+=`<div class="checks">`+f.options.map(o=>`<label class="chk"><input type="checkbox" data-k="${f.k}" data-opt="${o}" ${arr.includes(o)?'checked':''}/> ${esc(o)}</label>`).join('')+`</div>`;
+    } else {
+      h+=`<input type="${f.t}" data-k="${f.k}" data-refs="${!!f.refs}" ${f.step?`step="${f.step}"`:''} value="${esc(v)}"/>`;
+    }
+    if(f.refs) h+=`<div class="help">Type <b>@</b> to reference another card</div>`;
+    h+=`</div>`;
+  });
+  h+=`</div><div class="insp-foot"><button class="btn danger" style="width:100%" onclick="deleteNode('${node.id}')">🗑 Delete node</button></div>`;
+  ins.innerHTML=h;
+
+  ins.querySelectorAll('[data-k]').forEach(inp=>{
+    inp.addEventListener(inp.type==='checkbox'?'change':'input',()=>{
+      if(inp.type==='checkbox'){
+        const boxes=ins.querySelectorAll(`input[type="checkbox"][data-k="${inp.dataset.k}"]`);
+        node.config[inp.dataset.k]=[...boxes].filter(b=>b.checked).map(b=>b.dataset.opt);
+      } else {
+        let val=inp.value; if(inp.type==='number')val=parseFloat(val);
+        node.config[inp.dataset.k]=val;
+      }
+      updateNodeSummary(node); markDirty();
+      if(inp.dataset.refs==='true') handleRefAutocomplete(inp,node);
+    });
+    if(inp.dataset.refs==='true'){
+      inp.addEventListener('keydown',acKeydown);
+      inp.addEventListener('blur',()=>setTimeout(closeAC,150));
+    }
+  });
+}
+function updateNodeSummary(node){
+  const el=document.querySelector(`.node[data-id="${node.id}"]`); if(!el)return;
+  el.querySelector('.ntitle').textContent=node.config.label||TYPES[node.type].name;
+  if(!state.results[node.id]) el.querySelector('.nbody').innerHTML='<div class="summary">'+esc(TYPES[node.type].summary(node))+'</div>';
+}
+
+/* ---- @ autocomplete ---- */
+let acState=null;
+function handleRefAutocomplete(inp,node){
+  const pos=inp.selectionStart, txt=inp.value.slice(0,pos);
+  const m=txt.match(/@([\w ]*)$/);
+  if(!m){ closeAC(); return; }
+  const q=m[1].toLowerCase();
+  const opts=state.nodes.filter(n=>n.id!==node.id)
+    .filter(n=>{ const lab=(n.config.label||TYPES[n.type].name).toLowerCase(); return lab.includes(q)||n.id.includes(q); });
+  if(!opts.length){ closeAC(); return; }
+  openAC(inp,opts,m[0].length,node);
+}
+function openAC(inp,opts,matchLen,node){
+  closeAC();
+  const ac=document.createElement('div'); ac.className='ac'; ac.id='ac';
+  opts.forEach((n,i)=>{
+    const d=TYPES[n.type];
+    const it=document.createElement('div'); it.className='ac-item'+(i===0?' act':'');
+    it.innerHTML=`<span class="nico" style="background:${hex(d.color)}22;color:${hex(d.color)}">${d.icon}</span>
+      ${esc(n.config.label||d.name)} <small>${n.id}</small>`;
+    it.addEventListener('mousedown',e=>{ e.preventDefault(); applyAC(inp,n,matchLen,node); });
+    ac.appendChild(it);
+  });
+  const r=inp.getBoundingClientRect();
+  ac.style.left=r.left+'px'; ac.style.top=(r.bottom+4)+'px'; ac.style.minWidth=r.width+'px';
+  document.body.appendChild(ac);
+  acState={inp,opts,matchLen,node,idx:0};
+}
+function applyAC(inp,n,matchLen,node){
+  const pos=inp.selectionStart;
+  const before=inp.value.slice(0,pos-matchLen), after=inp.value.slice(pos);
+  const ref='@{'+refName(n)+'}';
+  inp.value=before+ref+after;
+  node.config[inp.dataset.k]=inp.value;
+  const np=before.length+ref.length; inp.setSelectionRange(np,np); inp.focus();
+  updateNodeSummary(node); closeAC();
+}
+function refName(n){ return n.config.label? n.config.label.toLowerCase().replace(/[^\w]+/g,'_').replace(/^_|_$/g,'') : n.id; }
+function acKeydown(e){
+  if(!acState)return; const items=[...document.querySelectorAll('.ac-item')];
+  if(e.key==='ArrowDown'){e.preventDefault(); acState.idx=Math.min(items.length-1,acState.idx+1); setAct(items);}
+  else if(e.key==='ArrowUp'){e.preventDefault(); acState.idx=Math.max(0,acState.idx-1); setAct(items);}
+  else if(e.key==='Enter'){ if(items.length){e.preventDefault(); applyAC(acState.inp,acState.opts[acState.idx],acState.matchLen,acState.node);} }
+  else if(e.key==='Escape'){ closeAC(); }
+}
+function setAct(items){ items.forEach((it,i)=>it.classList.toggle('act',i===acState.idx)); }
+function closeAC(){ const a=document.getElementById('ac'); if(a)a.remove(); acState=null; }
+
+function runApp(){
+  if(state.running)return; if(!state.nodes.length){flashHint('Add some cards first');return;}
+  state.running=true; state.results={};
+  const btn=document.getElementById('runBtn'); btn.textContent='■ Running…'; btn.disabled=true;
+  const log=document.getElementById('runlog'); log.className='runlog show'; log.innerHTML='';
+  render();
+  const t0=performance.now();
+  // gather runtime inputs from input cards
+  const inputs={}; state.nodes.filter(n=>n.type.startsWith('input'))
+    .forEach(n=>inputs[n.id]=n.config.value??n.config.default??'');
+  const proto=location.protocol==='https:'?'wss':'ws';
+  const ws=new WebSocket(`${proto}://${location.host}/ws/run`);
+  let done=false;
+  function finish(){ if(done)return; done=true; state.running=false; btn.textContent='▶ Run'; btn.disabled=false; }
+  ws.onopen=()=>ws.send(JSON.stringify({app:toAppDef(), inputs}));
+  ws.onmessage=ev=>{
+    let f; try{ f=JSON.parse(ev.data); }catch(e){ return; }
+    if(f.event==='node'){
+      const prev=state.results[f.nodeId]||{};
+      state.results[f.nodeId]={
+        status:f.status,
+        output:(f.output!==undefined)?f.output:prev.output,
+        ms:(f.ms!=null)?f.ms:prev.ms,
+        tokens:(f.tokens!=null)?f.tokens:prev.tokens,
+        error:f.error,
+      };
+      if(f.status==='running'&&f.output) updateOneNode(f.nodeId); else render();
+      const node=state.nodes.find(n=>n.id===f.nodeId);
+      if(f.status==='done') logLine(node, state.results[f.nodeId]);
+      if(f.status==='error') logLine(node, {error:f.error});
+    } else if(f.event==='run_complete'){
+      logLine(null,{summary:'✓ run complete in '+Math.round(performance.now()-t0)+'ms'}); finish();
+    } else if(f.event==='error'){
+      logLine(null,{summary:'⚠ '+f.error}); finish();
+    }
+  };
+  ws.onerror=()=>{ logLine(null,{summary:'⚠ cannot reach backend (/ws/run)'}); finish(); };
+  ws.onclose=()=>finish();
+}
+function updateOneNode(id){ const el=document.querySelector(`.node[data-id="${id}"]`); if(el){ const r=state.results[id];
+  el.querySelector('.nbody').innerHTML=renderResult(state.nodes.find(n=>n.id===id),r); } }
+function logLine(node,r){
+  const log=document.getElementById('runlog');
+  const d=node?TYPES[node.type]:null;
+  const ll=document.createElement('div'); ll.className='ll';
+  if(node){ const meta=r.error?`<span style="color:#fca5a5">⚠ ${esc(r.error)}</span>`
+      :(r.output&&r.output.kind==='rows'?`${r.output.rows.length} rows`:(r.tokens?`${r.tokens} tok`:'ok'));
+    ll.innerHTML=`<span class="t">${r.ms||0}ms</span> ${d.icon} <b>${esc(node.config.label||d.name)}</b> · ${meta}`; }
+  else ll.innerHTML=`<b style="color:var(--ok)">${esc(r.summary)}</b>`;
+  log.appendChild(ll); log.scrollTop=log.scrollHeight;
+}
+
+/* ============================================================
+   IMPORT / EXPORT (App Definition JSON — matches design spec)
+   ============================================================ */
+function toAppDef(){
+  return {
+    schemaVersion:'1.0',
+    name:document.getElementById('appName').value,
+    canvas:'graph',
+    settings:{defaultModelId:'anthropic.claude-3-5-sonnet-20241022-v2:0', region:'us-east-1', streaming:true},
+    nodes:state.nodes.map(n=>({id:n.id,type:n.type,label:n.config.label||TYPES[n.type].name,
+      position:{x:n.x,y:n.y}, config:n.config})),
+    edges:state.edges.map(e=>({id:e.id,source:e.source,target:e.target})),
+  };
+}
+function exportApp(){
+  const blob=new Blob([JSON.stringify(toAppDef(),null,2)],{type:'application/json'});
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
+  a.download=(document.getElementById('appName').value||'app').replace(/\s+/g,'-').toLowerCase()+'.json'; a.click();
+}
+function importApp(ev){
+  const f=ev.target.files[0]; if(!f)return; const rd=new FileReader();
+  rd.onload=()=>{ try{ loadAppDef(JSON.parse(rd.result)); }catch(e){ alert('Invalid JSON'); } };
+  rd.readAsText(f); ev.target.value='';
+}
+function loadAppDef(def){
+  document.getElementById('appName').value=def.name||'Untitled';
+  state.nodes=(def.nodes||[]).map(n=>({id:n.id,type:n.type,x:n.position?.x||100,y:n.position?.y||100,config:n.config||{}}));
+  state.edges=(def.edges||[]).map(e=>({id:e.id||uid('e'),source:e.source,target:e.target}));
+  state.results={}; state.sel=null; state.appId=def.id||null;
+  const maxId=state.nodes.length+state.edges.length+5; state.idc=Math.max(state.idc,maxId);
+  render(); renderInspector(); markClean();
+}
+function clearCanvas(){ state.nodes=[]; state.edges=[]; state.results={}; state.sel=null; render(); renderInspector(); }
+
+/* ============================================================
+   SAVED-APPS LIBRARY (persisted via backend REST API)
+   ============================================================ */
+async function apiJSON(path, opts){
+  const r=await fetch(path, Object.assign({headers:{'Content-Type':'application/json'}}, opts||{}));
+  if(!r.ok) throw new Error('HTTP '+r.status);
+  return r.status===204 ? null : r.json();
+}
+
+function markDirty(){ state.dirty=true; updateSavedTag(); }
+function markClean(){ state.dirty=false; updateSavedTag(); }
+function updateSavedTag(){
+  const tag=document.getElementById('savedTag');
+  if(state.dirty){ tag.innerHTML='· <b style="color:#f0b86b">unsaved changes</b>'; return; }
+  tag.innerHTML = state.appId
+    ? '· <b style="color:#7ee2a8">saved</b>'+(state.savedAt?' '+relTime(state.savedAt):'')
+    : '';
+}
+
+async function saveCurrentApp(){
+  if(!state.nodes.length){ toast('Nothing to save — add some cards first'); return; }
+  try{
+    const def=toAppDef(); if(state.appId) def.id=state.appId;
+    const saved = state.appId
+      ? await apiJSON('/api/apps/'+state.appId,{method:'PUT',body:JSON.stringify(def)})
+      : await apiJSON('/api/apps',{method:'POST',body:JSON.stringify(def)});
+    state.appId=saved.id; state.savedAt=saved.updatedAt; markClean();
+    toast('Saved “'+saved.name+'”');
+  }catch(e){ toast('Save failed — is the backend running?'); }
+}
+
+function newApp(){
+  if(state.dirty && !confirm('Discard unsaved changes and start a new app?')) return;
+  state.nodes=[]; state.edges=[]; state.results={}; state.sel=null; state.appId=null; state.savedAt=null; state.idc=1;
+  document.getElementById('appName').value='Untitled app';
+  render(); renderInspector(); markClean();
+}
+
+function openLibrary(){ document.getElementById('libModal').classList.add('show'); renderLibrary(); }
+function closeLibrary(){ document.getElementById('libModal').classList.remove('show'); }
+
+async function renderLibrary(){
+  const list=document.getElementById('libList');
+  list.innerHTML='<div class="applist-empty">Loading…</div>';
+  let apps;
+  try{ apps=await apiJSON('/api/apps'); }
+  catch(e){ list.innerHTML='<div class="applist-empty">⚠ Cannot reach the backend.<br/>Start it with <b>./run.sh</b>.</div>'; return; }
+  if(!apps.length){ list.innerHTML='<div class="applist-empty">No saved apps yet.<br/>Build something and hit <b>💾 Save</b>.</div>'; return; }
+  list.innerHTML=apps.map(a=>{
+    const conns=(a.nodes||[]).filter(n=>n.type.startsWith('source')||n.type.startsWith('model')).length;
+    const cur=a.id===state.appId?' current':'';
+    return `<div class="approw${cur}">
+      <div class="ai">✦</div>
+      <div class="am">
+        <div class="an">${esc(a.name||'Untitled')}</div>
+        <div class="ad">${(a.nodes||[]).length} cards · ${conns} connectors · updated ${relTime(a.updatedAt)}</div>
+      </div>
+      <div class="act">
+        <button class="iconbtn" title="Open" onclick="openApp('${a.id}')">↗</button>
+        <button class="iconbtn" title="Duplicate" onclick="duplicateApp('${a.id}')">⧉</button>
+        <button class="iconbtn del" title="Delete" onclick="deleteApp('${a.id}')">🗑</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function openApp(id){
+  if(state.dirty && !confirm('Discard unsaved changes and open this app?')) return;
+  try{
+    const app=await apiJSON('/api/apps/'+id);
+    loadAppDef(app); state.savedAt=app.updatedAt;
+    closeLibrary(); resetView(); markClean(); toast('Opened “'+(app.name||'app')+'”');
+  }catch(e){ toast('Open failed'); }
+}
+async function duplicateApp(id){
+  try{
+    const src=await apiJSON('/api/apps/'+id);
+    const copy=JSON.parse(JSON.stringify(src)); delete copy.id;
+    copy.name=(src.name||'Untitled')+' (copy)';
+    await apiJSON('/api/apps',{method:'POST',body:JSON.stringify(copy)});
+    renderLibrary(); toast('Duplicated');
+  }catch(e){ toast('Duplicate failed'); }
+}
+async function deleteApp(id){
+  if(!confirm('Delete this app? This cannot be undone.')) return;
+  try{
+    await apiJSON('/api/apps/'+id,{method:'DELETE'});
+    if(state.appId===id){ state.appId=null; state.savedAt=null; updateSavedTag(); }
+    renderLibrary();
+  }catch(e){ toast('Delete failed'); }
+}
+
+function relTime(iso){
+  if(!iso) return ''; const d=new Date(iso), s=(Date.now()-d.getTime())/1000;
+  if(s<60) return 'just now'; if(s<3600) return Math.floor(s/60)+'m ago';
+  if(s<86400) return Math.floor(s/3600)+'h ago'; if(s<604800) return Math.floor(s/86400)+'d ago';
+  return d.toLocaleDateString();
+}
+let toastT=null;
+function toast(msg){ const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show');
+  clearTimeout(toastT); toastT=setTimeout(()=>t.classList.remove('show'),2200); }
+
+/* ============================================================
+   SAMPLE APP (the demo flow)
+   ============================================================ */
+function loadSample(){
+  state.nodes=[]; state.edges=[]; state.results={}; state.idc=1;
+  const q=addNodeAt('input.text',40,60,{label:'Question',placeholder:'Ask…',value:'P1 phishing incidents in the last 24h'});
+  const sev=addNodeAt('input.dropdown',40,220,{label:'Severity',options:'P1, P2, P3',value:'P1'});
+  const trino=addNodeAt('source.trino',360,60,{catalog:'hive',schema:'security',maxRows:500,
+    sql:"SELECT id, severity, owner, ts\nFROM incidents\nWHERE severity = @{severity}\nORDER BY ts DESC"});
+  const neo=addNodeAt('source.neo4j',360,330,{query:"MATCH (i:Incident)-[r]-(e)\nWHERE i.id IN @{trino}\nRETURN e.name AS entity, labels(e)[0] AS type, type(r) AS rel\nLIMIT 50"});
+  const llm=addNodeAt('model.bedrock',690,140,{
+    modelId:'anthropic.claude-3-5-sonnet-20241022-v2:0',
+    system:'You are a senior security analyst. Be concise and actionable.',
+    prompt:"User asked: @{question}\n\nIncidents from the warehouse:\n@{trino}\n\nRelated graph entities:\n@{neo4j}\n\nSummarize the risk and recommend next steps.",
+    temperature:0.2,maxTokens:1500});
+  const out=addNodeAt('output.text',1010,90,{template:'## Risk Analysis\n@{bedrock}'});
+  const tbl=addNodeAt('output.table',1010,300,{source:'@{trino}'});
+  // relabel some ids' refName collisions by setting friendly labels
+  trino.config.label='Trino'; neo.config.label='Neo4j'; llm.config.label='Bedrock';
+  link(q.id,trino.id); link(sev.id,trino.id); link(trino.id,neo.id);
+  link(q.id,llm.id); link(trino.id,llm.id); link(neo.id,llm.id);
+  link(llm.id,out.id); link(trino.id,tbl.id);
+  document.getElementById('appName').value='Incident Triage Assistant';
+  state.appId=null; state.sel=llm.id; render(); renderInspector(); resetView(); markClean();
+}
+function addNodeAt(type,x,y,cfg){
+  const d=TYPES[type];
+  const node={id:uid(type.split('.')[1]),type,x,y,config:Object.assign(JSON.parse(JSON.stringify(d.defaults)),cfg||{})};
+  state.nodes.push(node); return node;
+}
+function link(s,t){ state.edges.push({id:uid('e'),source:s,target:t}); }
+
+/* ============================================================
+   BOOT
+   ============================================================ */
+function boot(){
+  buildPalette();
+  loadSample();   // start on the demo flow; use 📁 My Apps to open saved ones
+}
+boot();
+</script>
+</body>
+</html>
