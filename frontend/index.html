@@ -104,6 +104,13 @@
     background:#0b0f17;border:1px solid var(--line);border-radius:5px;padding:3px 6px;margin-top:2px;
     white-space:pre-wrap;word-break:break-word}
   .ag-res{color:#7ee2a8;padding-left:8px}
+  .tbl-row{display:flex;flex-wrap:wrap;gap:5px;margin:2px 0 8px}
+  .tbl-chip{background:rgba(249,115,22,.16);border:1px solid rgba(249,115,22,.45);color:#fdba74;
+    border-radius:11px;padding:1px 8px;font-size:10.5px;font-weight:600}
+  .ag-route{color:#c4b5fd}
+  .ag-model{color:#93c5fd;margin-bottom:5px}
+  .route-tag{background:rgba(196,181,253,.18);border:1px solid rgba(196,181,253,.4);color:#c4b5fd;
+    border-radius:9px;padding:0 6px;font-size:9.5px;margin-left:4px}
   .checks{display:flex;flex-direction:column;gap:7px}
   .chk{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text);
     text-transform:none;letter-spacing:0;font-weight:400;margin:0;cursor:pointer}
@@ -454,8 +461,9 @@ const TYPES = {
       {k:'schema', t:'text', label:'Trino schema (source=trino)'},
       {k:'tables', t:'text', label:'Tables allow-list (comma; blank = auto-scope)'},
       {k:'maxSchemaTables', t:'number', label:'Auto-scope threshold (tables)'},
-      {k:'provider', t:'select', label:'Model provider', options:['claudecode','anthropic']},
-      {k:'modelId', t:'select', label:'Model', options:[
+      {k:'provider', t:'select', label:'Model provider', options:['bedrock','claudecode','anthropic']},
+      {k:'modelId', t:'select', label:'Model (auto = router picks per question)', options:[
+        'auto',
         'claude-opus-4-1',
         'claude-sonnet-4-5',
         'claude-3-5-haiku-latest',
@@ -643,8 +651,13 @@ function renderResult(node,r){
   const o=r.output; if(o==null) return '…';
   let html='';
   if(o.kind==='agent'){
+    if(o.model) html+=`<div class="ag-step ag-model">⚙ model: <b>${esc(o.model)}</b> · ${esc(o.provider||'')}${o.routed?' <span class="route-tag">auto-routed</span>':''}</div>`;
+    if(o.tables&&o.tables.length){
+      html+='<div class="tbl-row">'+o.tables.map(t=>`<span class="tbl-chip">▦ ${esc(t)}</span>`).join('')+'</div>';
+    }
     (o.steps||[]).forEach(s=>{
       if(s.type==='think') html+=`<div class="ag-step ag-think">💭 ${esc(s.text)}</div>`;
+      else if(s.type==='router') html+=`<div class="ag-step ag-route">🧭 router → <b>${esc(s.tier)}</b> · ${esc(s.reason)}</div>`;
       else if(s.type==='tool_call') html+=`<div class="ag-step ag-call">🔧 <b>${esc(s.tool)}</b><div class="ag-code">${esc(s.input)}</div></div>`;
       else if(s.type==='tool_result') html+=`<div class="ag-step ag-res">↳ ${esc(s.summary)}</div>`;
     });
@@ -998,9 +1011,15 @@ function renderChatAnswer(partials, ids){
   let html='';
   ids.forEach(id=>{ const o=partials[id]; if(!o)return;
     if(o.kind==='agent'){
-      const calls=(o.steps||[]).filter(s=>s.type==='tool_call');
-      if(calls.length) html+=`<div class="trace">🔧 ${calls.map(s=>esc(s.tool)).join(' · ')}</div>`;
-      html+=esc(o.value||'');
+      if(o.model) html+=`<div class="ag-step ag-model">⚙ model: <b>${esc(o.model)}</b> · ${esc(o.provider||'')}${o.routed?' <span class="route-tag">auto-routed</span>':''}</div>`;
+      if(o.tables&&o.tables.length) html+='<div class="tbl-row">'+o.tables.map(t=>`<span class="tbl-chip">▦ ${esc(t)}</span>`).join('')+'</div>';
+      (o.steps||[]).forEach(s=>{
+        if(s.type==='think') html+=`<div class="ag-step ag-think">💭 ${esc(s.text)}</div>`;
+        else if(s.type==='router') html+=`<div class="ag-step ag-route">🧭 router → <b>${esc(s.tier)}</b> · ${esc(s.reason)}</div>`;
+        else if(s.type==='tool_call') html+=`<div class="ag-step ag-call">🔧 <b>${esc(s.tool)}</b><div class="ag-code">${esc(s.input)}</div></div>`;
+        else if(s.type==='tool_result') html+=`<div class="ag-step ag-res">↳ ${esc(s.summary)}</div>`;
+      });
+      if(o.value) html+='<div style="margin-top:7px;border-top:1px solid var(--line);padding-top:7px">'+esc(o.value)+'</div>';
     } else { html+=esc(o.value||''); }
   });
   return html;

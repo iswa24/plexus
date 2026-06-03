@@ -129,5 +129,13 @@ def test_scope_tables_full_when_small():
         b.close()
 
 
+def test_tables_from_sql_extracts_lineage():
+    from plexus.connectors.nl2sql import _tables_from_sql
+    sql = ("SELECT * FROM incidents i JOIN assets.assets a ON i.asset_id=a.id "
+           "JOIN assets.identities o ON a.owner_email=o.email")
+    t = _tables_from_sql(sql)
+    assert "incidents" in t and "assets.assets" in t and "assets.identities" in t
+
+
 async def _noop(_):
     return None

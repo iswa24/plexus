@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import os
 
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
@@ -70,6 +70,39 @@ def delete_app(app_id: str):
 @app.get("/api/audit")
 def get_audit(limit: int = 100):
     return audit.recent(limit)
+
+
+# ---------------------------------------------------------------- run a SAVED app (reuse)
+@app.post("/api/apps/{app_id}/run")
+async def run_saved_app(app_id: str, body: dict, request: Request):
+    """Run a saved agent again and again, by id, with inputs. Returns each node's
+    output. This turns a built+validated agent into a callable service (script it,
+    schedule it, embed it) — the same agent, no rebuild."""
+    stored = registry.get(app_id)
+    if not stored:
+        raise HTTPException(status_code=404, detail="app not found")
+    app_def = AppDef(**stored)
+    principal = principal_from_headers({k.lower(): v for k, v in request.headers.items()})
+    results: dict = {}
+
+    async def emit(frame: dict):
+        if frame.get("event") == "node" and frame.get("status") == "done":
+            results[frame["nodeId"]] = frame.get("output")
+
+    await execute(app_def, (body or {}).get("inputs", {}), settings, principal, emit, audit)
+    # convenience: pick the "answer" — prefer output.text, then model nodes, never inputs
+    types = {n.id: n.type for n in app_def.nodes}
+
+    def _pick() -> str:
+        for nid, o in results.items():
+            if types.get(nid) == "output.text" and isinstance(o, dict) and o.get("value"):
+                return o["value"]
+        for nid, o in results.items():
+            if types.get(nid, "").startswith("model") and isinstance(o, dict) and o.get("value"):
+                return o["value"]
+        return ""
+
+    return {"appId": app_id, "name": app_def.name, "results": results, "answer": _pick()}
 
 
 # ---------------------------------------------------------------- generate
