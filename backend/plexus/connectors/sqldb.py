@@ -35,10 +35,22 @@ def open_db(settings) -> sqlite3.Connection:
     return conn
 
 
-def schema_text(conn: sqlite3.Connection) -> str:
-    """Human/LLM-readable schema across both attached databases."""
+def list_tables(conn: sqlite3.Connection) -> list[str]:
+    """Qualified table names across both attached DBs (e.g. 'incidents', 'assets.assets')."""
+    names = []
+    for db, prefix in (("main", ""), ("assets", "assets.")):
+        for (t,) in conn.execute(
+            f"SELECT name FROM {db}.sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
+        ):
+            names.append(prefix + t)
+    return names
+
+
+def schema_text(conn: sqlite3.Connection, only: list[str] | None = None) -> str:
+    """LLM-readable schema; if `only` is given, restrict to those qualified names."""
+    keep = set(only) if only else None
     out = []
-    for db, label in (("main", "incidents (main)"), ("assets", "assets")):
+    for db, prefix in (("main", ""), ("assets", "assets.")):
         tables = [
             r[0]
             for r in conn.execute(
@@ -47,10 +59,12 @@ def schema_text(conn: sqlite3.Connection) -> str:
             )
         ]
         for t in tables:
+            ident = prefix + t
+            if keep is not None and ident not in keep:
+                continue
             cols = conn.execute(f"PRAGMA {db}.table_info({t})").fetchall()
             coldesc = ", ".join(f"{c[1]} {c[2]}" for c in cols)
-            prefix = "" if db == "main" else "assets."
-            out.append(f"{prefix}{t}({coldesc})")
+            out.append(f"{ident}({coldesc})")
     return "\n".join(out)
 
 

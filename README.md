@@ -101,6 +101,10 @@ rows → answer.
   The agent introspects `information_schema` and runs Trino SQL via the Trino
   client — same agent, real cluster. Spin up a local test stack from
   [`infra/`](infra/README.md) (`docker compose up`). The SQLite path needs no install.
+- **Schema scoping** (for large estates — you can't put 1000s of tables in a prompt):
+  set a **Tables allow-list** on the card, or leave it blank and the agent
+  **auto-scopes** — above the *threshold* it lists table names, the model picks the
+  relevant ones, and only those are introspected. The chosen tables show in the trace.
 
 ## Configuration (environment variables)
 

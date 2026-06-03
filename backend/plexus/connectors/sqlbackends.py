@@ -24,8 +24,11 @@ class SqliteBackend:
     def __init__(self, settings):
         self.conn = sqldb.open_db(settings)
 
-    def schema_text(self):
-        return sqldb.schema_text(self.conn)
+    def table_names(self):
+        return sqldb.list_tables(self.conn)
+
+    def schema_text(self, only=None):
+        return sqldb.schema_text(self.conn, only)
 
     def run_select(self, sql, max_rows=200):
         return sqldb.run_select(self.conn, sql, max_rows)
@@ -70,14 +73,24 @@ class TrinoBackend:
             auth=JWTAuthentication(token) if token else None,
         )
 
-    def schema_text(self):
+    def table_names(self):
         cur = self.conn.cursor()
         cur.execute(
-            f"SELECT table_name, column_name, data_type "
-            f"FROM {self.catalog}.information_schema.columns "
-            f"WHERE table_schema = ? ORDER BY table_name, ordinal_position",
+            f"SELECT table_name FROM {self.catalog}.information_schema.tables "
+            f"WHERE table_schema = ?",
             (self.schema,),
         )
+        return [r[0] for r in cur.fetchall()]
+
+    def schema_text(self, only=None):
+        cur = self.conn.cursor()
+        base = (f"SELECT table_name, column_name, data_type "
+                f"FROM {self.catalog}.information_schema.columns WHERE table_schema = ?")
+        params = [self.schema]
+        if only:
+            base += " AND table_name IN (" + ",".join(["?"] * len(only)) + ")"
+            params += list(only)
+        cur.execute(base + " ORDER BY table_name, ordinal_position", params)
         tables: "OrderedDict[str, list[str]]" = OrderedDict()
         for table, col, dtype in cur.fetchall():
             tables.setdefault(table, []).append(f"{col} {dtype}")

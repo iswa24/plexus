@@ -447,11 +447,13 @@ const TYPES = {
   },
   'model.nl2sql': {
     cat:'Model', name:'NL→SQL Agent', icon:'🧮', color:'#f97316',
-    defaults:{ source:'sqlite', catalog:'', schema:'', provider:'claudecode', modelId:'claude-sonnet-4-5', goal:'@{question}', maxSteps:6, maxTokens:1500 },
+    defaults:{ source:'sqlite', catalog:'', schema:'', tables:'', maxSchemaTables:25, provider:'claudecode', modelId:'claude-sonnet-4-5', goal:'@{question}', maxSteps:6, maxTokens:1500 },
     fields:[
       {k:'source', t:'select', label:'Data source', options:['sqlite','trino']},
       {k:'catalog', t:'text', label:'Trino catalog (source=trino)'},
       {k:'schema', t:'text', label:'Trino schema (source=trino)'},
+      {k:'tables', t:'text', label:'Tables allow-list (comma; blank = auto-scope)'},
+      {k:'maxSchemaTables', t:'number', label:'Auto-scope threshold (tables)'},
       {k:'provider', t:'select', label:'Model provider', options:['claudecode','anthropic']},
       {k:'modelId', t:'select', label:'Model', options:[
         'claude-opus-4-1',

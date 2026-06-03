@@ -82,5 +82,52 @@ def test_backend_defaults_to_sqlite():
         b.close()
 
 
+def test_list_tables_and_filtered_schema():
+    conn = sqldb.open_db(_settings)
+    try:
+        names = sqldb.list_tables(conn)
+        assert "incidents" in names and "assets.assets" in names
+        only = sqldb.schema_text(conn, only=["incidents"])
+        assert "incidents(" in only and "assets.assets(" not in only
+    finally:
+        conn.close()
+
+
+def test_scope_tables_honors_allowlist():
+    from plexus.connectors.nl2sql import _scope_tables
+    from plexus.connectors.sqlbackends import get_backend
+    b = get_backend({}, _settings, Principal("t"))
+    steps = []
+
+    async def push():
+        return None
+
+    async def run():
+        return await _scope_tables(b, "q", {"tables": "incidents, alerts"}, _Ctx(_settings), steps, push)
+
+    try:
+        assert asyncio.run(run()) == ["incidents", "alerts"]
+    finally:
+        b.close()
+
+
+def test_scope_tables_full_when_small():
+    # 4 tables, default threshold 25 → None (use full schema), no model call
+    from plexus.connectors.nl2sql import _scope_tables
+    from plexus.connectors.sqlbackends import get_backend
+    b = get_backend({}, _settings, Principal("t"))
+
+    async def push():
+        return None
+
+    async def run():
+        return await _scope_tables(b, "q", {}, _Ctx(_settings), [], push)
+
+    try:
+        assert asyncio.run(run()) is None
+    finally:
+        b.close()
+
+
 async def _noop(_):
     return None

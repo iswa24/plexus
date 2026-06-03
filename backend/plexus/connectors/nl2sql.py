@@ -34,6 +34,62 @@ TOOLS = [{
 }]
 
 
+async def _complete(prompt: str, system: str, config: dict, ctx) -> str | None:
+    """Single provider-agnostic text completion (used for table selection)."""
+    provider = (config.get("provider") or ctx.settings.nl2sql_provider or "claudecode").lower()
+    if provider == "claudecode" and claudecli.available():
+        return await claudecli.claude_run(prompt, system=system, model=claudecli.cli_model(config.get("modelId")))
+    if ctx.settings.anthropic_api_key:
+        import anthropic  # noqa: WPS433
+        client = anthropic.Anthropic(api_key=ctx.settings.anthropic_api_key)
+        resp = await asyncio.to_thread(
+            client.messages.create,
+            model=config.get("modelId") or ctx.settings.anthropic_model,
+            max_tokens=300, system=system,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        return "".join(b.text for b in resp.content if b.type == "text")
+    return None
+
+
+async def _scope_tables(backend, question, config, ctx, steps, push) -> list[str] | None:
+    """Schema scoping for large estates: allow-list, else full (if small), else
+    two-phase discovery (list names -> model picks relevant -> introspect only those).
+    Returns the chosen table list (None = use everything). Always traced, never silent.
+    """
+    allow = [t.strip() for t in (config.get("tables") or "").split(",") if t.strip()]
+    if allow:
+        steps.append({"type": "think", "text": f"Scoped to configured tables: {', '.join(allow)}"})
+        await push()
+        return allow
+
+    try:
+        names = backend.table_names()
+    except Exception:
+        return None  # backend can't list — fall back to full schema_text()
+
+    threshold = int(config.get("maxSchemaTables", 25))
+    if len(names) <= threshold:
+        return None  # small estate — inject the whole schema
+
+    steps.append({"type": "think",
+                  "text": f"{len(names)} tables in scope — selecting the relevant ones for this question…"})
+    await push()
+    prompt = (f"Available tables:\n{', '.join(names)}\n\nQuestion: {question}\n\n"
+              "Return ONLY a comma-separated list of the table names needed to answer (max 8).")
+    out = await _complete(prompt, "You select the SQL tables relevant to a question. "
+                                  "Output only a comma-separated list of table names.", config, ctx)
+    picked = [t.strip() for t in re.split(r"[,\n]", out or "") if t.strip() in names][:8]
+    if not picked:  # heuristic fallback — keyword match, then first N (logged, not silent)
+        q = (question or "").lower()
+        picked = [n for n in names if n.split(".")[-1].lower() in q][:8] or names[:threshold]
+        steps.append({"type": "think", "text": f"Model selection unavailable; using {len(picked)} tables by heuristic."})
+    else:
+        steps.append({"type": "think", "text": f"Selected tables: {', '.join(picked)} (of {len(names)})"})
+    await push()
+    return picked
+
+
 def _clean_sql(s: str) -> str:
     s = (s or "").strip()
     s = re.sub(r"^```(?:sql)?", "", s).strip()
@@ -54,7 +110,8 @@ async def run_nl2sql(config: dict, ctx, emit: Emit) -> dict[str, Any]:
 
     backend = get_backend(config, ctx.settings, ctx.principal)
     try:
-        schema = backend.schema_text()
+        scoped = await _scope_tables(backend, question, config, ctx, steps, push)
+        schema = backend.schema_text(only=scoped)
         provider = (config.get("provider") or ctx.settings.nl2sql_provider or "claudecode").lower()
         if provider == "claudecode" and claudecli.available():
             return await _claudecode(backend, schema, question, config, steps, answer, push)
