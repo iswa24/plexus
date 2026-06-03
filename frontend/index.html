@@ -110,19 +110,30 @@
   .chk input{width:auto}
 
   /* config panel */
-  .inspector{width:340px;background:var(--panel);border-left:1px solid var(--line);
+  .inspector{width:368px;background:var(--panel);border-left:1px solid var(--line);
     overflow-y:auto;flex-shrink:0;display:flex;flex-direction:column}
-  .insp-head{padding:13px 15px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:9px}
-  .insp-head .nico{width:26px;height:26px}
-  .insp-head h3{margin:0;font-size:14px}
-  .insp-body{padding:14px 15px;flex:1}
-  .field{margin-bottom:14px;position:relative}
-  .field label{display:block;font-size:11px;color:var(--muted);margin-bottom:5px;
+  .insp-head{padding:15px 18px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px}
+  .insp-head .nico{width:28px;height:28px}
+  .insp-head h3{margin:0;font-size:14.5px}
+  .insp-body{padding:18px 18px 8px;flex:1}
+  .field{margin-bottom:18px;position:relative}
+  .field label{display:block;font-size:11px;color:var(--muted);margin-bottom:7px;
     text-transform:uppercase;letter-spacing:.5px;font-weight:600}
   .field input,.field select,.field textarea{width:100%;background:var(--bg);border:1px solid var(--line);
-    color:var(--text);border-radius:8px;padding:8px 10px;font-size:13px;font-family:inherit}
-  .field textarea{resize:vertical;min-height:74px;line-height:1.5}
+    color:var(--text);border-radius:9px;padding:10px 12px;font-size:13.5px;font-family:inherit;line-height:1.4}
+  .field input:hover,.field select:hover,.field textarea:hover{border-color:#2c3850}
+  .field textarea{resize:vertical;min-height:92px;line-height:1.55}
   .field textarea.code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px}
+
+  /* inspector section header + user-interaction preview */
+  .insp-section{font-size:11px;letter-spacing:.6px;text-transform:uppercase;color:var(--accent2);
+    font-weight:700;margin:4px 0 12px;padding-top:16px;border-top:1px solid var(--line)}
+  .iopreview{background:linear-gradient(180deg,#0d1320,var(--bg));border:1px solid var(--line);
+    border-radius:12px;padding:16px}
+  .iop-label{display:block;font-size:13px;color:var(--text);margin-bottom:8px;font-weight:600}
+  .iop-control{width:100%;background:var(--panel2);border:1px solid #2c3850;color:var(--text);
+    border-radius:9px;padding:11px 13px;font-size:14px;font-family:inherit}
+  .iop-hint{font-size:11px;color:var(--muted);margin-top:10px;line-height:1.5;display:flex;gap:6px}
   .field input:focus,.field textarea:focus,.field select:focus{outline:none;border-color:var(--accent2)}
   .field .help{font-size:10.5px;color:var(--muted);margin-top:4px}
   .ref-pill{display:inline-block;background:rgba(99,102,241,.18);color:var(--accent2);
@@ -665,6 +676,11 @@ function renderInspector(){
     if(f.refs) h+=`<div class="help">Type <b>@</b> to reference another card</div>`;
     h+=`</div>`;
   });
+  if(node.type.startsWith('input')){
+    h+=`<div class="insp-section">User interaction · preview</div>
+        <div class="iopreview" id="iopPreview">${inputPreviewControls(node)}</div>
+        <div class="iop-hint">👤 This is what the person running the app sees and fills in.</div>`;
+  }
   h+=`</div><div class="insp-foot"><button class="btn danger" style="width:100%" onclick="deleteNode('${node.id}')">🗑 Delete node</button></div>`;
   ins.innerHTML=h;
 
@@ -678,6 +694,7 @@ function renderInspector(){
         node.config[inp.dataset.k]=val;
       }
       updateNodeSummary(node); markDirty();
+      if(node.type.startsWith('input')){ const p=ins.querySelector('#iopPreview'); if(p) p.innerHTML=inputPreviewControls(node); }
       if(inp.dataset.refs==='true') handleRefAutocomplete(inp,node);
     });
     if(inp.dataset.refs==='true'){
@@ -685,6 +702,17 @@ function renderInspector(){
       inp.addEventListener('blur',()=>setTimeout(closeAC,150));
     }
   });
+}
+/* Live preview of an input card as the app user will see it at run time. */
+function inputPreviewControls(node){
+  const c=node.config, label=esc(c.label||'Input');
+  if(node.type==='input.dropdown'){
+    const opts=(c.options||'').split(',').map(o=>o.trim()).filter(Boolean);
+    return `<label class="iop-label">${label}</label><select class="iop-control">`+
+      opts.map(o=>`<option ${o===c.value?'selected':''}>${esc(o)}</option>`).join('')+`</select>`;
+  }
+  return `<label class="iop-label">${label}</label>`+
+    `<input class="iop-control" placeholder="${esc(c.placeholder||'')}" value="${esc(c.value||'')}"/>`;
 }
 function updateNodeSummary(node){
   const el=document.querySelector(`.node[data-id="${node.id}"]`); if(!el)return;
