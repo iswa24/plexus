@@ -265,6 +265,84 @@
   .gen-ex:hover{border-color:#3a465c;background:#1b2230}
   .gen-note{font-size:11px;color:var(--muted);margin-top:12px;line-height:1.5}
   #genBtn:disabled{opacity:.6;cursor:default}
+
+  /* ask (analyst entry) */
+  .btn.ask-btn{background:linear-gradient(135deg,var(--accent),var(--pink));border:none;color:#fff;font-weight:700}
+  .btn.ask-btn:hover{filter:brightness(1.1)}
+  .ask-modal{width:640px}
+  .ask-mark{width:26px;height:26px;border-radius:7px;background:linear-gradient(135deg,var(--accent),var(--pink));
+    display:grid;place-items:center;font-size:14px;margin-right:9px}
+  .ask-hero{font-size:17px;font-weight:600;margin-bottom:13px}
+  .ask-input{width:100%;min-height:92px;background:var(--bg);border:1px solid var(--line);color:var(--text);
+    border-radius:11px;padding:13px 15px;font-size:15px;font-family:inherit;line-height:1.5;resize:vertical}
+  .ask-input:focus{outline:none;border-color:var(--accent2)}
+  .ask-working{display:flex;align-items:center;gap:12px;font-size:14px;color:var(--text);padding:6px 0 14px}
+  .ask-spin{width:18px;height:18px;border:2px solid var(--line);border-top-color:var(--accent2);
+    border-radius:50%;animation:spin .8s linear infinite;flex-shrink:0}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .ask-progress{font-size:12.5px;color:var(--muted);display:flex;flex-direction:column;gap:3px;
+    max-height:280px;overflow:auto;font-family:ui-monospace,Menlo,monospace}
+  .ask-rlabel{font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--accent2);font-weight:700;margin:0 0 8px}
+  .ask-answer{max-height:320px;margin-bottom:16px}
+  .ask-built{margin-bottom:6px}
+  .ask-flow{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+  .ask-chip{border:1px solid var(--line);border-radius:14px;padding:3px 10px;font-size:11.5px}
+  .ask-arrow{color:var(--muted);font-size:12px}
+  .ask-cta{display:flex;gap:8px;justify-content:flex-end;margin-top:18px}
+  .ask-badge{font-size:12px;border-radius:9px;padding:8px 12px;margin-bottom:14px;line-height:1.5}
+  .ask-badge.reuse{background:rgba(34,197,94,.14);border:1px solid rgba(34,197,94,.4);color:#bff0d0}
+  .ask-badge.built{background:rgba(245,158,11,.14);border:1px solid rgba(245,158,11,.4);color:#fcd9a1}
+
+  /* connect (engineer integration) */
+  .btn.connect{background:rgba(129,140,248,.16);border-color:rgba(129,140,248,.45);color:#c7b3ff;font-weight:600}
+  .btn.connect:hover{background:rgba(129,140,248,.26)}
+  .conn-row{display:flex;gap:12px;align-items:baseline;padding:5px 0;font-size:12.5px;border-bottom:1px solid var(--line)}
+  .conn-row b{width:70px;color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.4px}
+  .conn-row code{background:var(--bg);border:1px solid var(--line);border-radius:5px;padding:1px 6px;font-size:11.5px}
+  .conn-pill{background:rgba(99,102,241,.18);color:var(--accent2);border-radius:5px;padding:0 5px;font-size:11px}
+  .conn-h{font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--accent2);font-weight:700;
+    margin:16px 0 7px;display:flex;align-items:center;gap:8px}
+  .conn-ep{background:rgba(56,189,248,.14);border:1px solid rgba(56,189,248,.4);color:#7dd3fc;
+    border-radius:9px;padding:1px 8px;font-size:10px;text-transform:none;letter-spacing:0;font-weight:600}
+  .conn-code{position:relative}
+  .conn-code pre{background:#0b0f17;border:1px solid var(--line);border-radius:8px;padding:11px 12px;margin:0;
+    font-family:ui-monospace,Menlo,monospace;font-size:11.5px;color:#c4cdda;overflow:auto;white-space:pre}
+  .conn-copy{position:absolute;top:7px;right:7px;background:var(--panel2);border:1px solid var(--line);
+    color:var(--muted);border-radius:6px;padding:2px 8px;font-size:10px;cursor:pointer}
+  .conn-copy:hover{color:var(--text);border-color:#3a465c}
+  .conn-note{font-size:11.5px;color:var(--muted);line-height:1.55}
+  .conn-note code{background:var(--bg);border:1px solid var(--line);border-radius:5px;padding:1px 5px;font-size:11px}
+
+  /* mode toggle + chat mode */
+  .mode-toggle{display:flex;background:var(--panel2);border:1px solid var(--line);border-radius:9px;padding:2px;margin-left:8px}
+  .mode-opt{background:transparent;border:none;color:var(--muted);padding:5px 13px;border-radius:7px;font-size:12.5px;font-weight:600;cursor:pointer}
+  .mode-opt.active{background:var(--accent);color:#fff}
+  .chat-surface{flex:1;display:none;flex-direction:column;min-width:0}
+  .app.mode-chat .chat-surface{display:flex}
+  .app.mode-chat .palette,.app.mode-chat .canvas-wrap,.app.mode-chat .inspector{display:none}
+  .app.mode-chat .topbar .btn,.app.mode-chat .app-name,.app.mode-chat .saved-tag{display:none}
+  .cs-transcript{flex:1;overflow-y:auto;padding:26px 0}
+  .cs-col{width:min(760px,92%);margin:0 auto;display:flex;flex-direction:column;gap:14px}
+  .cs-bot{align-self:stretch;font-size:13.5px}
+  .cs-via{font-size:11px;color:#7ee2a8;margin-bottom:6px}
+  .cs-needs{color:#fcd9a1;margin-bottom:10px;font-size:13.5px;line-height:1.5}
+  .cs-empty{margin:48px auto;text-align:center;color:var(--muted);max-width:520px;line-height:1.7;font-size:14px}
+  .cs-empty .big{font-size:20px;color:var(--text);font-weight:600;margin-bottom:8px}
+  .cs-input{border-top:1px solid var(--line);padding:14px 0;background:var(--panel)}
+  .cs-inwrap{width:min(760px,92%);margin:0 auto;display:flex;gap:10px;align-items:flex-end}
+  #csPrompt{flex:1;background:var(--bg);border:1px solid var(--line);color:var(--text);border-radius:12px;
+    padding:12px 15px;font-size:14px;font-family:inherit;line-height:1.5;resize:vertical;min-height:50px;max-height:170px}
+  #csPrompt:focus{outline:none;border-color:var(--accent2)}
+  /* chat answer renderings — text is default; table/doc/json are dynamic */
+  .cs-text{white-space:pre-wrap;line-height:1.6;font-size:14px;color:var(--text)}
+  .cs-doc{max-height:none}
+  .cs-json{max-height:none}
+  .cs-tablewrap{overflow:auto;max-height:62vh;border:1px solid var(--line);border-radius:9px}
+  .cs-table{width:100%;border-collapse:collapse;font-size:12.5px}
+  .cs-table th{position:sticky;top:0;background:var(--panel2);text-align:left;padding:8px 12px;
+    border-bottom:1px solid var(--line);color:var(--accent2);font-weight:600;white-space:nowrap}
+  .cs-table td{padding:7px 12px;border-bottom:1px solid #1b2230;color:#c4cdda}
+  .cs-meta{font-size:11px;color:var(--muted);margin-top:6px}
 </style>
 </head>
 <body>
@@ -282,10 +360,15 @@
       </svg></div>
       <div>Plexus <small>· agent studio</small></div>
     </div>
+    <div class="mode-toggle">
+      <button id="modeChat" class="mode-opt" onclick="setMode('chat')">💬 Chat</button>
+      <button id="modeBuild" class="mode-opt" onclick="setMode('builder')">🛠 Builder</button>
+    </div>
     <input class="app-name" id="appName" value="Incident Triage Assistant" oninput="markDirty()" />
     <span class="saved-tag" id="savedTag"></span>
     <div class="spacer"></div>
-    <button class="btn gen" onclick="openGenerate()">✨ Generate</button>
+    <button class="btn ask-btn" onclick="openAsk()" title="Ask a question — Plexus builds, runs, and lets you deploy an agent">✦ Ask</button>
+    <button class="btn gen" onclick="openGenerate()" title="Build a flow from a description (no auto-run)">✨ Generate</button>
     <button class="btn ghost" onclick="newApp()">＋ New</button>
     <button class="btn ghost" onclick="loadSample()">↻ Sample</button>
     <button class="btn save" id="saveBtn" onclick="saveCurrentApp()">💾 Save</button>
@@ -293,6 +376,7 @@
     <button class="btn ghost" onclick="exportApp()">⤓ Export</button>
     <button class="btn ghost" onclick="document.getElementById('importFile').click()">⤒ Import</button>
     <input type="file" id="importFile" accept=".json" style="display:none" onchange="importApp(event)"/>
+    <button class="btn connect" onclick="openConnect()" title="Integrate this agent into your code / pipelines">&lt;/&gt; Connect</button>
     <button class="btn preview" onclick="openChat()" title="Use the app like an end user (chat)">▷ Preview</button>
     <button class="btn primary" id="runBtn" onclick="runApp()" title="Run on the canvas (watch each node)">▶ Run</button>
   </div>
@@ -320,6 +404,16 @@
       <div class="empty-insp">Select a node to configure it.<br/><br/>
         In any <span class="ref-pill">SQL</span>, <span class="ref-pill">Cypher</span> or
         <span class="ref-pill">prompt</span> field, type <b>@</b> to reference another card's output.</div>
+    </div>
+
+    <!-- CHAT MODE (consumer): route to an existing agent, or recommend building one -->
+    <div class="chat-surface" id="chatSurface">
+      <div class="cs-transcript" id="csTranscript"><div class="cs-col" id="csCol"></div></div>
+      <div class="cs-input"><div class="cs-inwrap">
+        <textarea id="csPrompt" placeholder="Ask about your security data…  (⌘/Ctrl + ↵ to send)"
+          onkeydown="if((event.metaKey||event.ctrlKey)&&event.key==='Enter')chatModeSend()"></textarea>
+        <button class="btn primary" onclick="chatModeSend()">Send ▷</button>
+      </div></div>
     </div>
   </div>
 
@@ -350,6 +444,27 @@
         <button class="btn primary" id="genBtn" style="width:100%" onclick="runGenerate()">✨ Generate flow</button>
         <div class="gen-note">Generates an editable card graph you can tweak and run. In demo mode this uses a built-in template; with Bedrock configured it's model-generated.</div>
       </div>
+    </div>
+  </div>
+
+  <!-- Ask — analyst entry: ask → build → run → deploy -->
+  <div class="modal-bg" id="askModal" onclick="if(event.target===this && askPhase!=='working')closeAsk()">
+    <div class="modal ask-modal">
+      <div class="modal-head">
+        <div class="ask-mark">✦</div>
+        <h3 style="flex:1">Ask Plexus</h3>
+        <button class="btn ghost" onclick="closeAsk()">✕</button>
+      </div>
+      <div class="modal-body" id="askBody"></div>
+    </div>
+  </div>
+
+  <!-- Connect — engineer integration -->
+  <div class="modal-bg" id="connectModal" onclick="if(event.target===this)closeConnect()">
+    <div class="modal" style="width:640px">
+      <div class="modal-head"><h3 style="flex:1">&lt;/&gt; Connect this agent</h3>
+        <button class="btn ghost" onclick="closeConnect()">✕</button></div>
+      <div class="modal-body" id="connectBody"></div>
     </div>
   </div>
 
@@ -607,7 +722,7 @@ const state = {
   nodes:[], edges:[], sel:null, idc:1,
   view:{x:80,y:60,scale:1},
   results:{}, running:false,
-  appId:null, savedAt:null, dirty:false,
+  appId:null, savedAt:null, dirty:false, mode:'chat',
 };
 
 /* ============================================================
@@ -1207,9 +1322,240 @@ async function runGenerate(){
     state.appId=null;           // it's a fresh, unsaved app
     document.getElementById('appName').value=def.name||'Generated app';
     resetView(); markDirty();
-    toast('Generated '+((def.nodes||[]).length)+' cards — edit, then ▶ Run or 💾 Save');
+    toast('Generated '+((def.nodes||[]).length)+' cards — edit, ▶ Run, or </> Connect to integrate');
   }catch(e){ toast('Generate failed — is the backend running?'); }
   finally{ btn.disabled=false; btn.textContent='✨ Generate flow'; }
+}
+
+/* ============================================================
+   CONNECT — integrate the built agent as a service (engineer view)
+   ============================================================ */
+function openConnect(){ document.getElementById('connectModal').classList.add('show'); renderConnect(); }
+function closeConnect(){ document.getElementById('connectModal').classList.remove('show'); }
+
+function renderConnect(){
+  const body=document.getElementById('connectBody');
+  if(!state.nodes.length){ body.innerHTML='<div class="applist-empty">Build or generate an agent first.</div>'; return; }
+  if(!state.appId){
+    body.innerHTML='<div class="conn-note">Save this agent to get a stable endpoint to connect to.</div>'+
+      '<button class="btn save" style="width:100%" onclick="(async()=>{await saveCurrentApp(); renderConnect();})()">💾 Save to get endpoint</button>';
+    return;
+  }
+  const origin=location.origin;
+  const inputs=state.nodes.filter(n=>n.type.startsWith('input'));
+  const ex={}; inputs.forEach(n=>ex[n.id]=(n.config.value||n.config.label||'value'));
+  const inputsJson=JSON.stringify(ex);
+  const inputsPretty=JSON.stringify(ex,null,2);
+  const id=state.appId;
+  const curl=`curl -X POST ${origin}/api/apps/${id}/run \\\n  -H 'Content-Type: application/json' \\\n  -H 'X-User: analyst@corp' \\\n  -d '${JSON.stringify({inputs:ex})}'`;
+  const py=`import requests\nr = requests.post(\n    "${origin}/api/apps/${id}/run",\n    json={"inputs": ${inputsPretty.replace(/\n/g,'\n          ')}},\n    headers={"X-User": "analyst@corp"},  # identity → audit + Trino OBO\n)\nprint(r.json()["answer"])`;
+  const js=`const res = await fetch("${origin}/api/apps/${id}/run", {\n  method: "POST",\n  headers: { "Content-Type": "application/json", "X-User": "analyst@corp" },\n  body: JSON.stringify({ inputs: ${inputsJson} }),\n});\nconst { answer } = await res.json();`;
+  const inputList=inputs.length? inputs.map(n=>`<span class="conn-pill">${esc(n.id)}</span> <small>${esc(n.config.label||'')}</small>`).join(' · ') : '<small>none</small>';
+
+  body.innerHTML=`
+    <div class="conn-row"><b>Agent</b><span>${esc(document.getElementById('appName').value)}</span></div>
+    <div class="conn-row"><b>App id</b><code>${esc(id)}</code></div>
+    <div class="conn-row"><b>Inputs</b><span>${inputList}</span></div>
+
+    <div class="conn-h">REST — run again &amp; again <span class="conn-ep">POST /api/apps/${esc(id)}/run</span></div>
+    ${codeBlock(curl,'bash')}
+    <div class="conn-h">Python</div>
+    ${codeBlock(py,'py')}
+    <div class="conn-h">JavaScript / fetch</div>
+    ${codeBlock(js,'js')}
+    <div class="conn-h">Streaming (live trace)</div>
+    <div class="conn-note">WebSocket <code>${esc(origin.replace('http','ws'))}/ws/run</code> — send <code>{app, inputs}</code>, receive per-node frames (model, SQL, tables, rows, answer).</div>
+    <div class="conn-h">Schedule / embed</div>
+    <div class="conn-note">Point any cron / Airflow / Dagster task at the REST endpoint to run this agent on a cadence. Identity flows via the <code>X-User</code> / bearer header (audited; Trino OBO).</div>
+  `;
+}
+function codeBlock(code,lang){
+  const id='cb_'+Math.random().toString(36).slice(2,8);
+  return `<div class="conn-code"><button class="conn-copy" onclick="copyCode('${id}')">copy</button><pre id="${id}">${esc(code)}</pre></div>`;
+}
+function copyCode(id){ const el=document.getElementById(id); if(el&&navigator.clipboard){ navigator.clipboard.writeText(el.textContent); toast('Copied'); } }
+
+/* ============================================================
+   ASK — analyst entry: ask → build → run → deploy (one flow)
+   ============================================================ */
+let askPhase='input', askLog=[], askAnswer=null, askReused=null;
+function openAsk(){ askPhase='input'; document.getElementById('askModal').classList.add('show'); renderAsk(); }
+function closeAsk(){ document.getElementById('askModal').classList.remove('show'); }
+function askAppend(line){ askLog.push(line); const el=document.getElementById('askProgress'); if(el){ el.innerHTML=askLog.map(l=>`<div class="ask-pline">${esc(l)}</div>`).join(''); el.scrollTop=1e9; } }
+
+const _AGENT_NAMES={'model.nl2sql':'Data Query Agent','model.cypher':'Graph Agent','model.classify':'Triage Agent',
+  'model.detection':'Detection Agent','model.agent':'Investigation Agent','model.bedrock':'Analysis Agent'};
+function genericAgentName(){ return genericNameForNodes(state.nodes); }
+function genericNameForNodes(nodes){ const m=(nodes||[]).find(n=>n.type.startsWith('model.')); return (m&&_AGENT_NAMES[m.type])||'Agent'; }
+
+/* ============================================================
+   MODE TOGGLE + CHAT MODE (consumer)
+   ============================================================ */
+function setMode(m){
+  state.mode=m;
+  document.querySelector('.app').className='app mode-'+m;
+  document.getElementById('modeChat').classList.toggle('active',m==='chat');
+  document.getElementById('modeBuild').classList.toggle('active',m==='builder');
+  if(m==='chat'){ ensureChatWelcome(); setTimeout(()=>{const t=document.getElementById('csPrompt');if(t)t.focus();},60); }
+}
+function ensureChatWelcome(){
+  const col=document.getElementById('csCol');
+  if(col && !col.children.length){
+    col.innerHTML='<div class="cs-empty"><div class="big">Ask Plexus</div>'+
+      "I answer using your organization's agents. If none fits your question yet, I'll tell you it needs to be built — switch to <b>🛠 Builder</b> to create &amp; deploy it.</div>";
+  }
+}
+let csPending='';
+function csBubble(kind, html){
+  const col=document.getElementById('csCol');
+  const empty=col.querySelector('.cs-empty'); if(empty) empty.remove();
+  const d=document.createElement('div'); d.className=(kind==='user'?'bubble user':'cs-bot'); d.innerHTML=html;
+  col.appendChild(d); document.getElementById('csTranscript').scrollTop=1e9; return d;
+}
+async function chatModeSend(){
+  const ta=document.getElementById('csPrompt'); const text=(ta.value||'').trim(); if(!text) return;
+  ta.value=''; csBubble('user', esc(text));
+  const bot=csBubble('bot','<span class="typing">▍</span>');
+  try{
+    const routed=await apiJSON('/api/route',{method:'POST',body:JSON.stringify({prompt:text})});
+    if(routed.match){
+      const app=await apiJSON('/api/apps/'+routed.appId);
+      const inp=(app.nodes||[]).find(n=>n.type.startsWith('input'));
+      const r=await apiJSON('/api/apps/'+routed.appId+'/run',{method:'POST',
+        body:JSON.stringify({inputs: inp?{[inp.id]:text}:{}})});
+      const outNode=(app.nodes||[]).find(n=>n.type.startsWith('output'));
+      const res=(r.results&&outNode)?r.results[outNode.id]:null;
+      bot.innerHTML=`<div class="cs-via">♻ via ${esc(genericNameForNodes(app.nodes))}</div>`+renderChatOutput(res, r.answer);
+    } else {
+      csPending=text;
+      bot.innerHTML=`<div class="cs-needs">🛠 I don't have an agent for this yet — it needs to be built.</div>`+
+        `<button class="btn" onclick="switchToBuilder()">Build this in Builder →</button>`;
+    }
+  }catch(e){ bot.innerHTML='⚠ '+esc(e.message||'could not reach the backend'); }
+  document.getElementById('csTranscript').scrollTop=1e9;
+}
+function switchToBuilder(){
+  const q=csPending; setMode('builder');
+  setTimeout(()=>{ openGenerate(); const g=document.getElementById('genPrompt'); if(g) g.value=q; },80);
+}
+/* render a chat answer by its output-node kind — text is the default */
+function renderChatOutput(res, fallback){
+  if(!res) return `<div class="cs-text">${esc(fallback||'(no output)')}</div>`;
+  if(res.kind==='rows'){
+    const cols=res.columns||Object.keys((res.rows||[])[0]||{});
+    return '<div class="cs-tablewrap"><table class="cs-table"><thead><tr>'+
+      cols.map(c=>`<th>${esc(c)}</th>`).join('')+'</tr></thead><tbody>'+
+      (res.rows||[]).map(row=>'<tr>'+cols.map(c=>`<td>${esc(row[c])}</td>`).join('')+'</tr>').join('')+
+      '</tbody></table></div>'+`<div class="cs-meta">${(res.rows||[]).length} rows</div>`;
+  }
+  if(res.kind==='document') return `<div class="doc-card cs-doc">${mdToHtml(res.value||'')}</div>`;
+  if(res.kind==='json') return `<pre class="json-out cs-json">${esc(JSON.stringify(res.value,null,2))}</pre>`;
+  return `<div class="cs-text">${esc(res.value||fallback||'')}</div>`;   // text (default)
+}
+function flowSummary(){
+  return state.nodes.slice().sort((a,b)=>a.x-b.x).map(n=>{ const d=TYPES[n.type];
+    return `<span class="ask-chip" style="border-color:${hex(d.color)}66;color:${hex(d.color)}">${d.icon} ${esc(n.config.label||d.name)}</span>`;
+  }).join('<span class="ask-arrow">→</span>');
+}
+function pickAnswer(){
+  for(const t of ['output.document','output.text']){ const n=state.nodes.find(x=>x.type===t);
+    if(n){ const r=state.results[n.id]; if(r&&r.output&&r.output.value) return {value:r.output.value}; } }
+  const m=state.nodes.find(x=>x.type.startsWith('model.'));
+  if(m){ const r=state.results[m.id]; if(r&&r.output) return {value:r.output.value||''}; }
+  return {value:'(no answer produced)'};
+}
+
+/* run the current canvas flow over WS; resolves with state.results */
+function runFlow(inputs, onFrame){
+  return new Promise(resolve=>{
+    state.results={}; render();
+    const proto=location.protocol==='https:'?'wss':'ws'; let done=false;
+    const finish=()=>{ if(!done){ done=true; resolve(state.results); } };
+    let ws; try{ ws=new WebSocket(`${proto}://${location.host}/ws/run`); }catch(e){ return finish(); }
+    ws.onopen=()=>ws.send(JSON.stringify({app:toAppDef(), inputs:inputs||{}}));
+    ws.onmessage=ev=>{ let f; try{ f=JSON.parse(ev.data); }catch(e){ return; }
+      if(f.event==='node'){ const prev=state.results[f.nodeId]||{};
+        state.results[f.nodeId]={status:f.status, output:(f.output!==undefined?f.output:prev.output),
+          ms:(f.ms!=null?f.ms:prev.ms), tokens:(f.tokens!=null?f.tokens:prev.tokens), error:f.error};
+        updateOneNode(f.nodeId); if(onFrame) onFrame(f);
+      } else if(f.event==='run_complete'){ finish(); try{ws.close();}catch(e){} }
+      else if(f.event==='error'){ if(onFrame)onFrame(f); finish(); } };
+    ws.onerror=()=>finish(); ws.onclose=()=>finish();
+  });
+}
+
+async function askRun(){
+  const prompt=document.getElementById('askPrompt').value.trim();
+  if(!prompt){ toast('Type a question first'); return; }
+  askPhase='working'; askLog=[]; askReused=null; renderAsk();
+  try{
+    // ① route-first: reuse an existing registered agent if one fits
+    askAppend('① Looking for an existing agent that fits…');
+    let routed={match:false};
+    try{ routed=await apiJSON('/api/route',{method:'POST',body:JSON.stringify({prompt})}); }catch(e){}
+    if(routed.match){
+      askAppend('♻ Found a matching agent — reusing it');
+      const app=await apiJSON('/api/apps/'+routed.appId);
+      loadAppDef(app); state.appId=routed.appId;
+      document.getElementById('appName').value=app.name||''; resetView();
+      askReused={name:app.name, reason:routed.reason};
+    } else {
+      askAppend('🆕 No matching agent — building a new one…');
+      const def=await apiJSON('/api/generate',{method:'POST',body:JSON.stringify({prompt})});
+      loadAppDef(def); state.appId=null;
+      document.getElementById('appName').value=def.name||'Generated agent'; resetView();
+      askAppend('② Built '+((def.nodes||[]).length)+' cards: '+state.nodes.slice().sort((a,b)=>a.x-b.x).map(n=>TYPES[n.type].name).join(' → '));
+    }
+    // ② run (pass the question as input to whichever agent)
+    const inputs={}; const inp=state.nodes.find(n=>n.type.startsWith('input')); if(inp) inputs[inp.id]=prompt;
+    askAppend('③ Running the agent…');
+    await runFlow(inputs, f=>{ if(f.event==='node'&&f.status==='done'){ const n=state.nodes.find(x=>x.id===f.nodeId); const d=n&&TYPES[n.type];
+      if(d){ const meta=f.output&&f.output.kind==='rows'?` · ${f.output.rows.length} rows`:(f.output&&f.output.model?` · ${f.output.model}`:''); askAppend('   ✓ '+(n.config.label||d.name)+meta); } }
+      else if(f.event==='error'){ askAppend('   ⚠ '+f.error); } });
+    askAnswer=pickAnswer(); askPhase='result'; renderAsk();
+  }catch(e){ askAppend('⚠ '+(e.message||'failed')+' — is the backend running?'); }
+}
+
+function renderAsk(){
+  const b=document.getElementById('askBody');
+  if(askPhase==='working'){
+    b.innerHTML=`<div class="ask-working"><div class="ask-spin"></div><div>Building &amp; running your agent…</div></div>
+      <div class="ask-progress" id="askProgress"></div>`;
+    askAppend(''); askLog.pop(); // ensure container fills
+    const el=document.getElementById('askProgress'); el.innerHTML=askLog.map(l=>`<div class="ask-pline">${esc(l)}</div>`).join('');
+    return;
+  }
+  if(askPhase==='result'){
+    const gname=genericAgentName();
+    const banner = askReused
+      ? `<div class="ask-badge reuse">♻ Answered using an existing <b>${esc(gname)}</b></div>`
+      : `<div class="ask-badge built">🆕 Built a new <b>${esc(gname)}</b> — <b>Save &amp; Register</b> so the next similar question reuses it</div>`;
+    const deployBtn = askReused
+      ? `<button class="btn primary" onclick="closeAsk(); openConnect();">&lt;/&gt; Connect</button>`
+      : `<button class="btn primary" onclick="(async()=>{await saveCurrentApp(); closeAsk(); openConnect();})()">💾 Save &amp; Register</button>`;
+    b.innerHTML=`
+      ${banner}
+      <div class="ask-rlabel">✅ Answer</div>
+      <div class="ask-answer doc-card">${mdToHtml((askAnswer||{}).value||'(no answer)')}</div>
+      <div class="ask-built"><div class="ask-rlabel">🔧 ${askReused?'The agent that answered':'The agent it built'}</div><div class="ask-flow">${flowSummary()}</div></div>
+      <div class="ask-cta">
+        <button class="btn ghost" onclick="askPhase='input';renderAsk()">↺ Ask another</button>
+        <button class="btn" onclick="closeAsk()">✎ Open in builder</button>
+        ${deployBtn}
+      </div>`;
+    return;
+  }
+  b.innerHTML=`
+    <div class="ask-hero">What do you want to know or automate?</div>
+    <textarea id="askPrompt" class="ask-input" placeholder="e.g. Which finance assets have open P1 incidents, and do their owners have MFA?"></textarea>
+    <div class="gen-examples">
+      <button class="gen-ex" onclick="document.getElementById('askPrompt').value=this.textContent">Which finance assets have open P1 incidents, and do their owners have MFA?</button>
+      <button class="gen-ex" onclick="document.getElementById('askPrompt').value=this.textContent">Summarize today's critical incidents for the board</button>
+      <button class="gen-ex" onclick="document.getElementById('askPrompt').value=this.textContent">What entities are related to the phishing incidents?</button>
+    </div>
+    <button class="btn primary" style="width:100%" onclick="askRun()">✦ Build &amp; Run →</button>
+    <div class="gen-note">Plexus designs the agent (sources + sub-agents + outputs) from your question, runs it, shows the answer, then lets you deploy it. Power users can open the builder to tweak.</div>`;
+  setTimeout(()=>{ const t=document.getElementById('askPrompt'); if(t)t.focus(); },60);
 }
 
 /* ============================================================
@@ -1384,7 +1730,8 @@ function link(s,t){ state.edges.push({id:uid('e'),source:s,target:t}); }
    ============================================================ */
 function boot(){
   buildPalette();
-  loadSample();   // start on the demo flow; use 📁 My Apps to open saved ones
+  loadSample();        // a flow waits in the builder
+  setMode('chat');     // consumers land in Chat; engineers toggle to 🛠 Builder
 }
 boot();
 </script>

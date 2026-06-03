@@ -10,6 +10,7 @@ from fastapi.staticfiles import StaticFiles
 from .audit import AuditLog
 from .auth import principal_from_headers
 from .config import get_settings
+from .connectors import llm
 from .executor import execute
 from .generator import generate_app
 from .models import AppDef
@@ -103,6 +104,72 @@ async def run_saved_app(app_id: str, body: dict, request: Request):
         return ""
 
     return {"appId": app_id, "name": app_def.name, "results": results, "answer": _pick()}
+
+
+# ---------------------------------------------------------------- route (reuse-first)
+class _SvcCtx:
+    def __init__(self):
+        self.settings = settings
+
+
+def _caps(a: dict) -> str:
+    types = [n.get("type", "") for n in a.get("nodes", [])]
+    grp = lambda p: [t.split(".")[-1] for t in types if t.startswith(p)]  # noqa: E731
+    parts = []
+    if grp("model"):
+        parts.append("agents: " + ", ".join(grp("model")))
+    if grp("source"):
+        parts.append("sources: " + ", ".join(grp("source")))
+    if grp("output"):
+        parts.append("outputs: " + ", ".join(grp("output")))
+    return "; ".join(parts)
+
+
+@app.post("/api/route")
+async def route_question(body: dict):
+    """Match a question to an EXISTING registered agent, or signal 'build new'.
+    This is the production path: reuse a validated pipeline (pass the question as
+    input) instead of generating a fresh agent on every query."""
+    import json
+    import re
+
+    prompt = (body or {}).get("prompt", "").strip()
+    if not prompt:
+        raise HTTPException(status_code=400, detail="prompt is required")
+    apps = registry.list()
+    if not apps:
+        return {"match": False, "reason": "no agents registered yet"}
+
+    listing = "\n".join(
+        f'- id="{a["id"]}" name="{a.get("name","")}" capability="{a.get("description") or _caps(a)}"'
+        for a in apps
+    )
+    ask = (f'User question: "{prompt}"\n\nExisting agents:\n{listing}\n\n'
+           "Pick the single agent that can already answer this by just receiving the question as input. "
+           "Only match if it genuinely fits the same data/capability; otherwise NONE.\n"
+           'Reply ONLY JSON: {"id":"<agent id or NONE>","reason":"<short>","confidence":0.0-1.0}')
+    try:
+        out = await llm.complete(ask, "You route questions to the best existing agent. Output only JSON.", {}, _SvcCtx())
+    except Exception as exc:
+        return {"match": False, "reason": f"router error: {exc}"[:160]}
+    if not out:
+        return {"match": False, "reason": "router unavailable (no model provider)"}
+
+    dec = {"id": "NONE", "reason": "", "confidence": 0}
+    try:
+        dec = json.loads(re.search(r"\{.*\}", out, re.S).group(0))
+    except Exception:
+        pass
+    try:
+        conf = float(dec.get("confidence", 0) or 0)
+    except (TypeError, ValueError):
+        conf = 0.0
+    ids = {a["id"] for a in apps}
+    if dec.get("id") in ids and conf >= 0.5:
+        a = next(x for x in apps if x["id"] == dec["id"])
+        return {"match": True, "appId": a["id"], "name": a.get("name"),
+                "reason": dec.get("reason", ""), "confidence": conf}
+    return {"match": False, "reason": dec.get("reason") or "no existing agent fits"}
 
 
 # ---------------------------------------------------------------- generate

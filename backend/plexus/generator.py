@@ -18,9 +18,10 @@ from .models import AppDef
 
 VALID_TYPES = {
     "input.text", "input.dropdown",
-    "source.trino", "source.neo4j",
-    "model.bedrock", "model.agent",
-    "output.text", "output.table",
+    "source.trino", "source.neo4j", "source.http", "source.s3", "source.elastic",
+    "model.bedrock", "model.agent", "model.nl2sql", "model.cypher",
+    "model.classify", "model.detection",
+    "output.text", "output.table", "output.document", "output.json",
 }
 
 SYSTEM = """You design "Plexus" apps. Output ONLY one JSON object, no prose:
@@ -97,7 +98,9 @@ def _heuristic(prompt: str) -> dict:
 
     def add(t, label, config):
         nid = t.split(".")[-1] + "_" + str(len(nodes))
-        nodes.append({"id": nid, "type": t, "label": label, "config": config})
+        cfg = dict(config)
+        cfg.setdefault("label", label)  # persist label so the canvas shows it after round-trip
+        nodes.append({"id": nid, "type": t, "label": label, "config": cfg})
         return nid
 
     def link(a, b):
@@ -111,22 +114,53 @@ def _heuristic(prompt: str) -> dict:
                      "relationship", "network", "lineage", "blast radius"])
     use_agent = any(k in p for k in
                     ["agent", "investigat", "autonomous", "decide", "figure out",
-                     "explore", "triage", "hunt"])
-    if not use_trino and not use_graph:
+                     "explore", "hunt"])
+    use_detect = any(k in p for k in
+                     ["detection rule", "sigma", "yara", "write a rule", "spl", "kql",
+                      "detection", "detect "])
+    use_classify = any(k in p for k in
+                       ["classify", "triage", "categorize", "what category", "label this",
+                        "severity of"])
+    if not (use_trino or use_graph or use_agent or use_detect or use_classify):
         use_trino = True  # sensible default source
 
-    q = add("input.text", "Question",
-            {"label": "Question", "placeholder": "Ask…", "value": (prompt or "").strip()[:140]})
+    title = _title(prompt)
+    q = add("input.text", "Question", {"placeholder": "Ask…", "value": (prompt or "").strip()[:140]})
 
     if use_agent:
         tools = ([t for t, on in (("trino", use_trino), ("neo4j", use_graph)) if on]) or ["trino", "neo4j"]
         m = add("model.agent", "Agent", {
-            "goal": "@{question}", "tools": tools,
+            "goal": f"@{{{q}}}", "tools": tools,
             "system": "You are an analyst agent. Use the available tools to gather "
                       "evidence, then give a concise answer with recommended actions.",
             "maxSteps": 5, "temperature": 0.2, "maxTokens": 1500,
         })
-        out = add("output.text", "Answer", {"template": "## Result\n@{agent}"})
+        out = add("output.text", "Answer", {"template": f"@{{{m}}}"})
+        link(q, m)
+        link(m, out)
+    elif use_detect:
+        m = add("model.detection", "Detection", {"provider": "claudecode", "modelId": "auto",
+                                                  "behavior": f"@{{{q}}}", "target": "Sigma"})
+        out = add("output.text", "Answer", {"template": f"@{{{m}}}"})
+        link(q, m)
+        link(m, out)
+    elif use_classify:
+        m = add("model.classify", "Triage", {"provider": "claudecode", "modelId": "auto", "input": f"@{{{q}}}"})
+        out = add("output.text", "Answer", {"template": f"@{{{m}}}"})
+        link(q, m)
+        link(m, out)
+    elif use_trino and not use_graph:
+        # "ask the data" → a real NL→SQL agent (writes its own SQL, runs it)
+        m = add("model.nl2sql", "NL2SQL", {
+            "provider": "claudecode", "source": "sqlite", "modelId": "auto", "goal": f"@{{{q}}}",
+        })
+        out = add("output.text", "Answer", {"template": f"@{{{m}}}"})
+        link(q, m)
+        link(m, out)
+    elif use_graph and not use_trino:
+        # relationship questions → a real NL→Cypher graph agent
+        m = add("model.cypher", "Graph", {"provider": "claudecode", "modelId": "auto", "goal": f"@{{{q}}}"})
+        out = add("output.text", "Answer", {"template": f"@{{{m}}}"})
         link(q, m)
         link(m, out)
     else:
@@ -138,21 +172,21 @@ def _heuristic(prompt: str) -> dict:
             })
         if use_graph:
             g = add("source.neo4j", "Neo4j", {
-                "query": ("MATCH (i:Incident)-[r]-(e)\nWHERE i.id IN @{trino}\n"
+                "query": (f"MATCH (i:Incident)-[r]-(e)\nWHERE i.id IN @{{{t}}}\n"
                           "RETURN e.name AS entity, labels(e)[0] AS type, type(r) AS rel\nLIMIT 50")
                 if t else "MATCH (n)-[r]-(m)\nRETURN n, r, m LIMIT 50",
             })
-        prompt_text = "User asked: @{question}"
+        prompt_text = f"User asked: @{{{q}}}"
         if t:
-            prompt_text += "\n\nWarehouse rows:\n@{trino}"
+            prompt_text += f"\n\nWarehouse rows:\n@{{{t}}}"
         if g:
-            prompt_text += "\n\nGraph entities:\n@{neo4j}"
+            prompt_text += f"\n\nGraph entities:\n@{{{g}}}"
         prompt_text += "\n\nAnswer the question using the information above."
         m = add("model.bedrock", "Bedrock", {
             "system": "You are a helpful analyst. Be concise and actionable.",
             "prompt": prompt_text, "temperature": 0.2, "maxTokens": 1500,
         })
-        out = add("output.text", "Answer", {"template": "## Result\n@{bedrock}"})
+        out = add("output.text", "Answer", {"template": f"@{{{m}}}"})
         if t and g:
             link(t, g)
         link(q, m)
@@ -162,7 +196,7 @@ def _heuristic(prompt: str) -> dict:
             link(g, m)
         link(m, out)
         if t:
-            tbl = add("output.table", "Records", {"source": "@{trino}"})
+            tbl = add("output.table", "Records", {"source": f"@{{{t}}}"})
             link(t, tbl)
 
     return {"name": _title(prompt), "nodes": nodes, "edges": edges}

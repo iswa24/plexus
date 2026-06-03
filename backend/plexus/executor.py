@@ -142,8 +142,9 @@ async def run_node(node: Node, ctx: RunContext, emit: Emit) -> dict[str, Any]:
     if t == "output.text":
         return {"kind": "text", "value": ctx.resolve(cfg.get("template", ""), for_prompt=False)}
     if t == "output.document":
-        return {"kind": "document", "title": cfg.get("title", "Document"),
-                "value": ctx.resolve(cfg.get("template", ""), for_prompt=False)}
+        title = cfg.get("title", "Document")
+        tmpl = (cfg.get("template", "") or "").replace("@{title}", title)  # the doc's own title is available
+        return {"kind": "document", "title": title, "value": ctx.resolve(tmpl, for_prompt=False)}
     if t == "output.table":
         m = REF_RE.search(cfg.get("source", "") or "")
         nid = ctx.ref_index.get(m.group(1).strip()) if m else None
