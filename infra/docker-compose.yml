@@ -1,0 +1,23 @@
+# Local Trino + Postgres for testing the NL→SQL agent's Trino backend.
+#   docker compose up -d         (wait ~30s for Trino to be ready)
+#   docker compose down -v       (stop + wipe)
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: plexus
+      POSTGRES_PASSWORD: plexus
+      POSTGRES_DB: security
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./postgres-init:/docker-entrypoint-initdb.d:ro
+
+  trino:
+    image: trinodb/trino:latest
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./trino/catalog:/etc/trino/catalog:ro
+    depends_on:
+      - postgres

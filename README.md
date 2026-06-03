@@ -95,6 +95,12 @@ rows → answer.
   (demo fallback) so the UI still works.
 - **Multiple models**: the card's Model dropdown / the CLI's model arg switch
   Claude tiers (Opus / Sonnet / Haiku) to compare quality and latency.
+- **Model provider**: `claudecode` (local `claude` CLI on a Max subscription, no
+  API key) or `anthropic` (direct API key). Set on the card or `PLEXUS_NL2SQL_PROVIDER`.
+- **Trino backend**: set the card's *Data source* to `trino` (+ catalog/schema).
+  The agent introspects `information_schema` and runs Trino SQL via the Trino
+  client — same agent, real cluster. Spin up a local test stack from
+  [`infra/`](infra/README.md) (`docker compose up`). The SQLite path needs no install.
 
 ## Configuration (environment variables)
 

@@ -3,6 +3,8 @@ import os
 import tempfile
 
 os.environ["PLEXUS_DEMO_MODE"] = "true"
+# Tests must never hit the live API; override any key from a local .env.
+os.environ["PLEXUS_ANTHROPIC_API_KEY"] = ""
 _db = os.path.join(tempfile.gettempdir(), "plexus_test.db")
 if os.path.exists(_db):
     os.remove(_db)

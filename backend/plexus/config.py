@@ -27,6 +27,9 @@ class Settings(BaseSettings):
     anthropic_api_key: str = ""
     anthropic_model: str = "claude-sonnet-4-5"
 
+    # NL2SQL model provider: "claudecode" (local CLI / Max sub, no key) or "anthropic" (API key)
+    nl2sql_provider: str = "claudecode"
+
     # --- NL2SQL SQLite databases (seed: python scripts/seed_security.py) ---
     incidents_db: str = "data/incidents.db"
     assets_db: str = "data/assets.db"

@@ -63,11 +63,23 @@ def test_writes_are_rejected():
 
 
 def test_nl2sql_demo_fallback_runs_real_sql():
-    # no anthropic key in test env → demo path, but it executes real SQL
-    out = asyncio.run(run_nl2sql({"goal": "open P1 incidents", "maxSteps": 3}, _Ctx(_settings), _noop))
+    # provider="demo" forces the no-model path (avoids calling the live claude CLI),
+    # but it still executes real SQL against the seeded data.
+    out = asyncio.run(run_nl2sql(
+        {"goal": "open P1 incidents", "provider": "demo", "maxSteps": 3}, _Ctx(_settings), _noop))
     assert out["kind"] == "agent"
     calls = [s for s in out["steps"] if s["type"] == "tool_call"]
     assert calls and "select" in calls[0]["input"].lower()
+
+
+def test_backend_defaults_to_sqlite():
+    from plexus.connectors.sqlbackends import SqliteBackend, get_backend
+    b = get_backend({}, _settings, Principal("tester"))
+    try:
+        assert isinstance(b, SqliteBackend)
+        assert "incidents(" in b.schema_text()
+    finally:
+        b.close()
 
 
 async def _noop(_):

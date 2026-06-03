@@ -447,19 +447,22 @@ const TYPES = {
   },
   'model.nl2sql': {
     cat:'Model', name:'NL→SQL Agent', icon:'🧮', color:'#f97316',
-    defaults:{ modelId:'claude-sonnet-4-5', goal:'@{question}', maxSteps:6, maxTokens:1500 },
+    defaults:{ source:'sqlite', catalog:'', schema:'', provider:'claudecode', modelId:'claude-sonnet-4-5', goal:'@{question}', maxSteps:6, maxTokens:1500 },
     fields:[
-      {k:'modelId', t:'select', label:'Model (Anthropic)', options:[
+      {k:'source', t:'select', label:'Data source', options:['sqlite','trino']},
+      {k:'catalog', t:'text', label:'Trino catalog (source=trino)'},
+      {k:'schema', t:'text', label:'Trino schema (source=trino)'},
+      {k:'provider', t:'select', label:'Model provider', options:['claudecode','anthropic']},
+      {k:'modelId', t:'select', label:'Model', options:[
         'claude-opus-4-1',
         'claude-sonnet-4-5',
-        'claude-3-5-sonnet-latest',
         'claude-3-5-haiku-latest',
       ]},
       {k:'goal', t:'textarea', refs:true, label:'Question (natural language → SQL)'},
       {k:'maxSteps', t:'number', label:'Max SQL steps'},
     ],
-    summary:n=>'🧮 NL→SQL · '+shortModel(n.config.modelId)+'\n'+oneline(n.config.goal),
-    badge:'SQLite · Anthropic',
+    summary:n=>'🧮 NL→SQL · '+(n.config.source||'sqlite')+'\n'+oneline(n.config.goal),
+    badge:'SQLite / Trino',
   },
   'output.text': {
     cat:'Output', name:'Text Output', icon:'📄', color:'var(--pink)',
