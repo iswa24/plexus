@@ -474,6 +474,43 @@ const TYPES = {
     summary:n=>'🧮 NL→SQL · '+(n.config.source||'sqlite')+'\n'+oneline(n.config.goal),
     badge:'SQLite / Trino',
   },
+  'model.classify': {
+    cat:'Model', name:'Classifier Agent', icon:'🏷', color:'#06b6d4',
+    defaults:{ provider:'claudecode', modelId:'auto', input:'@{alert}',
+      categories:'Phishing, Malware, Unauthorized Access, Data Loss, Policy Violation, Other' },
+    fields:[
+      {k:'provider', t:'select', label:'Model provider', options:['bedrock','claudecode','anthropic']},
+      {k:'modelId', t:'select', label:'Model', options:['auto','claude-opus-4-1','claude-sonnet-4-5','claude-3-5-haiku-latest']},
+      {k:'input', t:'textarea', refs:true, label:'Text to classify (type @ to reference a card)'},
+      {k:'categories', t:'text', label:'Categories (comma separated)'},
+    ],
+    summary:n=>'🏷 classify → '+oneline(n.config.categories),
+    badge:'triage / routing',
+  },
+  'model.detection': {
+    cat:'Model', name:'Detection Rule Agent', icon:'🛡', color:'#ef4444',
+    defaults:{ provider:'claudecode', modelId:'claude-sonnet-4-5', behavior:'@{behavior}', target:'Sigma' },
+    fields:[
+      {k:'provider', t:'select', label:'Model provider', options:['bedrock','claudecode','anthropic']},
+      {k:'modelId', t:'select', label:'Model', options:['auto','claude-opus-4-1','claude-sonnet-4-5','claude-3-5-haiku-latest']},
+      {k:'behavior', t:'textarea', refs:true, label:'Behavior to detect (type @ to reference a card)'},
+      {k:'target', t:'select', label:'Rule format', options:['Sigma','Splunk SPL','SQL','KQL']},
+    ],
+    summary:n=>'🛡 '+(n.config.target||'Sigma')+' rule\n'+oneline(n.config.behavior),
+    badge:'detection-as-code',
+  },
+  'model.cypher': {
+    cat:'Model', name:'Graph Agent (NL→Cypher)', icon:'🕸', color:'#22c55e',
+    defaults:{ provider:'claudecode', modelId:'auto', goal:'@{question}', graphModel:'' },
+    fields:[
+      {k:'provider', t:'select', label:'Model provider', options:['bedrock','claudecode','anthropic']},
+      {k:'modelId', t:'select', label:'Model', options:['auto','claude-opus-4-1','claude-sonnet-4-5','claude-3-5-haiku-latest']},
+      {k:'goal', t:'textarea', refs:true, label:'Question (natural language → Cypher)'},
+      {k:'graphModel', t:'textarea', label:'Graph model (blank = default security graph)'},
+    ],
+    summary:n=>'🕸 NL→Cypher\n'+oneline(n.config.goal),
+    badge:'Neo4j · graph',
+  },
   'output.text': {
     cat:'Output', name:'Text Output', icon:'📄', color:'var(--pink)',
     defaults:{template:'## Analysis\n@{analysis}'},
@@ -1003,7 +1040,7 @@ function appendBubble(kind, html){
 
 function computeAnswerNodes(){
   // models stream token-by-token → best for a chat answer; fall back to text outputs
-  const models=state.nodes.filter(n=>n.type==='model.bedrock'||n.type==='model.agent'||n.type==='model.nl2sql').map(n=>n.id);
+  const models=state.nodes.filter(n=>n.type.startsWith('model.')).map(n=>n.id);
   if(models.length) return models;
   return state.nodes.filter(n=>n.type==='output.text').map(n=>n.id);
 }

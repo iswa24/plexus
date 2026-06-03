@@ -10,6 +10,9 @@ from .auth import Principal
 from .config import Settings
 from .connectors.agent import run_agent
 from .connectors.bedrock import run_bedrock
+from .connectors.classify import run_classify
+from .connectors.cypher import run_cypher
+from .connectors.detection import run_detection
 from .connectors.neo4j import run_neo4j
 from .connectors.nl2sql import run_nl2sql
 from .connectors.trino import run_trino
@@ -123,6 +126,12 @@ async def run_node(node: Node, ctx: RunContext, emit: Emit) -> dict[str, Any]:
         return await run_agent(cfg, ctx, emit)
     if t == "model.nl2sql":
         return await run_nl2sql(cfg, ctx, emit)
+    if t == "model.classify":
+        return await run_classify(cfg, ctx, emit)
+    if t == "model.detection":
+        return await run_detection(cfg, ctx, emit)
+    if t == "model.cypher":
+        return await run_cypher(cfg, ctx, emit)
     if t == "output.text":
         return {"kind": "text", "value": ctx.resolve(cfg.get("template", ""), for_prompt=False)}
     if t == "output.table":
