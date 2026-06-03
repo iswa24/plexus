@@ -8,11 +8,14 @@ from typing import Any, Awaitable, Callable, Optional
 
 from .auth import Principal
 from .config import Settings
+from .connectors.action import run_action
 from .connectors.agent import run_agent
 from .connectors.bedrock import run_bedrock
 from .connectors.classify import run_classify
 from .connectors.cypher import run_cypher
 from .connectors.detection import run_detection
+from .connectors.prompt_agent import run_prompt
+from .connectors.rag import run_rag
 from .connectors.neo4j import run_neo4j
 from .connectors.nl2sql import run_nl2sql
 from .connectors.sources import run_elastic, run_http, run_s3
@@ -139,6 +142,12 @@ async def run_node(node: Node, ctx: RunContext, emit: Emit) -> dict[str, Any]:
         return await run_detection(cfg, ctx, emit)
     if t == "model.cypher":
         return await run_cypher(cfg, ctx, emit)
+    if t == "model.rag":
+        return await run_rag(cfg, ctx, emit)
+    if t == "model.prompt":
+        return await run_prompt(cfg, ctx, emit)
+    if t == "action.webhook":
+        return await run_action(cfg, ctx, emit)
     if t == "output.text":
         return {"kind": "text", "value": ctx.resolve(cfg.get("template", ""), for_prompt=False)}
     if t == "output.document":

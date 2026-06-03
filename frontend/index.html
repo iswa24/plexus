@@ -317,6 +317,9 @@
   .mode-toggle{display:flex;background:var(--panel2);border:1px solid var(--line);border-radius:9px;padding:2px;margin-left:8px}
   .mode-opt{background:transparent;border:none;color:var(--muted);padding:5px 13px;border-radius:7px;font-size:12.5px;font-weight:600;cursor:pointer}
   .mode-opt.active{background:var(--accent);color:#fff}
+  .usage-meter{font-size:11px;color:var(--muted);margin-left:10px;white-space:nowrap;
+    background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:4px 9px}
+  .usage-meter b{color:#7ee2a8;font-weight:600}
   .chat-surface{flex:1;display:none;flex-direction:column;min-width:0}
   .app.mode-chat .chat-surface{display:flex}
   .app.mode-chat .palette,.app.mode-chat .canvas-wrap,.app.mode-chat .inspector{display:none}
@@ -325,6 +328,19 @@
   .cs-col{width:min(760px,92%);margin:0 auto;display:flex;flex-direction:column;gap:14px}
   .cs-bot{align-self:stretch;font-size:13.5px}
   .cs-via{font-size:11px;color:#7ee2a8;margin-bottom:6px}
+  .cs-method{background:rgba(99,102,241,.2);color:var(--accent2);border:1px solid rgba(129,140,248,.4);
+    border-radius:9px;padding:0 7px;font-size:10px;font-weight:700;margin-left:4px}
+  .cs-model{color:#93c5fd;font-size:10.5px;font-weight:600}
+  .cs-cachetag{background:rgba(34,197,94,.16);border:1px solid rgba(34,197,94,.4);color:#7ee2a8;
+    border-radius:9px;padding:0 7px;font-size:10px;font-weight:700}
+  .cs-how{margin:4px 0 12px;font-size:12px;color:var(--muted)}
+  .cs-how summary{cursor:pointer;color:var(--accent2);font-size:11.5px;font-weight:600;user-select:none;list-style:none}
+  .cs-how[open] summary{margin-bottom:8px}
+  .cs-flow{display:flex;flex-wrap:wrap;align-items:center;gap:5px;margin:6px 0 8px}
+  .cs-fchip{border:1px solid var(--line);border-radius:13px;padding:2px 9px;font-size:11px}
+  .cs-srow{margin:6px 0;font-size:11.5px;color:#9aa6b6;line-height:1.8}
+  .cs-cost{margin-top:8px;font-size:11px;color:var(--muted)}
+  .cs-cost b{color:#7ee2a8}
   .cs-needs{color:#fcd9a1;margin-bottom:10px;font-size:13.5px;line-height:1.5}
   .cs-empty{margin:48px auto;text-align:center;color:var(--muted);max-width:520px;line-height:1.7;font-size:14px}
   .cs-empty .big{font-size:20px;color:var(--text);font-weight:600;margin-bottom:8px}
@@ -364,6 +380,7 @@
       <button id="modeChat" class="mode-opt" onclick="setMode('chat')">💬 Chat</button>
       <button id="modeBuild" class="mode-opt" onclick="setMode('builder')">🛠 Builder</button>
     </div>
+    <span class="usage-meter" id="usageMeter" title="Token usage · model cost · cache hits (saved)"></span>
     <input class="app-name" id="appName" value="Incident Triage Assistant" oninput="markDirty()" />
     <span class="saved-tag" id="savedTag"></span>
     <div class="spacer"></div>
@@ -674,6 +691,42 @@ const TYPES = {
     summary:n=>'🕸 NL→Cypher\n'+oneline(n.config.goal),
     badge:'Neo4j · graph',
   },
+  'model.rag': {
+    cat:'Sub-agents', name:'RAG Knowledge Agent', icon:'📚', color:'#8b5cf6',
+    defaults:{ provider:'claudecode', modelId:'auto', goal:'@{question}', topK:4 },
+    fields:[
+      {k:'provider', t:'select', label:'Model provider', options:['bedrock','claudecode','anthropic']},
+      {k:'modelId', t:'select', label:'Model', options:['auto','claude-opus-4-1','claude-sonnet-4-5','claude-3-5-haiku-latest']},
+      {k:'goal', t:'textarea', refs:true, label:'Question (answered from the knowledge base)'},
+      {k:'topK', t:'number', label:'Passages to retrieve (top-k)'},
+    ],
+    summary:n=>'📚 RAG · top-'+(n.config.topK||4)+'\n'+oneline(n.config.goal),
+    badge:'retrieval + cite',
+  },
+  'model.prompt': {
+    cat:'Sub-agents', name:'Prompt Agent', icon:'✍', color:'#a855f7',
+    defaults:{ provider:'claudecode', modelId:'auto', system:'You are a senior security analyst. Be concise and actionable.', goal:'@{question}' },
+    fields:[
+      {k:'provider', t:'select', label:'Model provider', options:['bedrock','claudecode','anthropic']},
+      {k:'modelId', t:'select', label:'Model', options:['auto','claude-opus-4-1','claude-sonnet-4-5','claude-3-5-haiku-latest']},
+      {k:'system', t:'textarea', label:'System prompt (the agent\'s role/skill)'},
+      {k:'goal', t:'textarea', refs:true, label:'Task / input (type @ to reference cards)'},
+    ],
+    summary:n=>'✍ '+oneline(n.config.system),
+    badge:'LLM task',
+  },
+  'action.webhook': {
+    cat:'Actions', name:'Action (approval-gated)', icon:'⚡', color:'#ef4444',
+    defaults:{ action:'open_ticket', url:'', payload:'@{analysis}', approved:false },
+    fields:[
+      {k:'action', t:'select', label:'Action', options:['open_ticket','notify','block_ip','disable_account']},
+      {k:'url', t:'text', label:'Webhook URL (executed only when approved)'},
+      {k:'payload', t:'textarea', refs:true, label:'Payload (type @ to reference cards)'},
+      {k:'approved', t:'checks', label:'Approval', options:['approved']},
+    ],
+    summary:n=>'⚡ '+(n.config.action||'action')+(((n.config.approved||[]).includes&&(n.config.approved||[]).includes('approved'))?' · approved':' · proposes only'),
+    badge:'response · gated',
+  },
   'output.text': {
     cat:'Output', name:'Text Output', icon:'📄', color:'var(--pink)',
     defaults:{template:'## Analysis\n@{analysis}'},
@@ -702,7 +755,7 @@ const TYPES = {
     summary:n=>'{ } '+oneline(n.config.source),
   },
 };
-const PALETTE_ORDER = ['Input','Source','Sub-agents','Output'];
+const PALETTE_ORDER = ['Input','Source','Sub-agents','Actions','Output'];
 
 /* ---------- helpers ---------- */
 function oneline(s){ s=(s||'').replace(/\s+/g,' ').trim(); return s.length>70?s.slice(0,70)+'…':s; }
@@ -1257,7 +1310,7 @@ function appendBubble(kind, html){
 
 function computeAnswerNodes(){
   // models stream token-by-token → best for a chat answer; fall back to text outputs
-  const models=state.nodes.filter(n=>n.type.startsWith('model.')).map(n=>n.id);
+  const models=state.nodes.filter(n=>n.type.startsWith('model.')||n.type.startsWith('action.')).map(n=>n.id);
   if(models.length) return models;
   return state.nodes.filter(n=>n.type==='output.text').map(n=>n.id);
 }
@@ -1384,9 +1437,10 @@ function closeAsk(){ document.getElementById('askModal').classList.remove('show'
 function askAppend(line){ askLog.push(line); const el=document.getElementById('askProgress'); if(el){ el.innerHTML=askLog.map(l=>`<div class="ask-pline">${esc(l)}</div>`).join(''); el.scrollTop=1e9; } }
 
 const _AGENT_NAMES={'model.nl2sql':'Data Query Agent','model.cypher':'Graph Agent','model.classify':'Triage Agent',
-  'model.detection':'Detection Agent','model.agent':'Investigation Agent','model.bedrock':'Analysis Agent'};
+  'model.detection':'Detection Agent','model.agent':'Investigation Agent','model.bedrock':'Analysis Agent',
+  'model.rag':'Knowledge Agent','model.prompt':'Analysis Agent','action.webhook':'Response Agent'};
 function genericAgentName(){ return genericNameForNodes(state.nodes); }
-function genericNameForNodes(nodes){ const m=(nodes||[]).find(n=>n.type.startsWith('model.')); return (m&&_AGENT_NAMES[m.type])||'Agent'; }
+function genericNameForNodes(nodes){ const m=(nodes||[]).find(n=>n.type.startsWith('model.')||n.type.startsWith('action.')); return (m&&_AGENT_NAMES[m.type])||'Agent'; }
 
 /* ============================================================
    MODE TOGGLE + CHAT MODE (consumer)
@@ -1412,32 +1466,83 @@ function csBubble(kind, html){
   const d=document.createElement('div'); d.className=(kind==='user'?'bubble user':'cs-bot'); d.innerHTML=html;
   col.appendChild(d); document.getElementById('csTranscript').scrollTop=1e9; return d;
 }
+async function usageSnap(){ try{ return await (await fetch('/api/usage')).json(); }catch(e){ return null; } }
+function appendCostLine(bot, u0, u1){
+  if(!u0||!u1) return;
+  const dTok=(u1.total_tokens||0)-(u0.total_tokens||0);
+  const dCost=(u1.cost_usd||0)-(u0.cost_usd||0);
+  const dHits=(u1.hits||0)-(u0.hits||0);
+  const dSaved=(u1.saved_usd||0)-(u0.saved_usd||0);
+  const dSem=(u1.sem_saved||0)-(u0.sem_saved||0);
+  let html;
+  if(dSem>0.0000005) html=`♻ similar-question cache · spent <b>$${dCost.toFixed(4)}</b> (saved $${dSem.toFixed(4)})`;
+  else if(dHits>0 && dCost<0.0000005) html=`♻ cached · <b>$0</b> spent (saved $${dSaved.toFixed(4)})`;
+  else if(dCost>0.0000005) html=`🪙 ${fmtK(dTok)} tokens · $${dCost.toFixed(4)}`;
+  else html='🪙 —';
+  const d=document.createElement('div'); d.className='cs-cost'; d.innerHTML=html; bot.appendChild(d);
+}
 async function chatModeSend(){
   const ta=document.getElementById('csPrompt'); const text=(ta.value||'').trim(); if(!text) return;
   ta.value=''; csBubble('user', esc(text));
   const bot=csBubble('bot','<span class="typing">▍</span>');
+  const u0=await usageSnap();
   try{
-    const routed=await apiJSON('/api/route',{method:'POST',body:JSON.stringify({prompt:text})});
-    if(routed.match){
-      const app=await apiJSON('/api/apps/'+routed.appId);
-      const inp=(app.nodes||[]).find(n=>n.type.startsWith('input'));
-      const r=await apiJSON('/api/apps/'+routed.appId+'/run',{method:'POST',
-        body:JSON.stringify({inputs: inp?{[inp.id]:text}:{}})});
+    // single cache-first call: a hit renders the stored answer with NO model spend
+    const r=await apiJSON('/api/ask',{method:'POST',body:JSON.stringify({prompt:text})});
+    if(r.match){
+      const app=r.app;
       const outNode=(app.nodes||[]).find(n=>n.type.startsWith('output'));
       const res=(r.results&&outNode)?r.results[outNode.id]:null;
-      bot.innerHTML=`<div class="cs-via">♻ via ${esc(genericNameForNodes(app.nodes))}</div>`+renderChatOutput(res, r.answer);
+      const agentNode=(app.nodes||[]).find(n=>n.type.startsWith('model.')||n.type.startsWith('action.'));
+      const ares=(r.results&&agentNode)?r.results[agentNode.id]:null;
+      const usedModel=(ares&&ares.model)?ares.model:'';
+      const free=!!r.cached;
+      bot.innerHTML=`<div class="cs-via">${free?'♻':'▷'} via ${esc(genericNameForNodes(app.nodes))} <span class="cs-method">${esc(methodLabel(agentNode))}</span>`+
+        (usedModel?` · <span class="cs-model">${esc(usedModel)}</span>`:'')+
+        (free?` · <span class="cs-cachetag">cached · $0 spent</span>`:'')+`</div>`+
+        renderChatHow(app, ares, agentNode)+renderChatOutput(res, r.answer);
     } else {
       csPending=text;
       bot.innerHTML=`<div class="cs-needs">🛠 I don't have an agent for this yet — it needs to be built.</div>`+
         `<button class="btn" onclick="switchToBuilder()">Build this in Builder →</button>`;
     }
   }catch(e){ bot.innerHTML='⚠ '+esc(e.message||'could not reach the backend'); }
+  appendCostLine(bot, u0, await usageSnap());
+  refreshUsage();
   document.getElementById('csTranscript').scrollTop=1e9;
 }
 function switchToBuilder(){
   const q=csPending; setMode('builder');
   setTimeout(()=>{ openGenerate(); const g=document.getElementById('genPrompt'); if(g) g.value=q; },80);
 }
+const _METHOD={'model.rag':'RAG','model.nl2sql':'NL→SQL','model.cypher':'Graph','model.classify':'Classifier',
+  'model.detection':'Detection','model.agent':'Agent','model.prompt':'Model','model.bedrock':'Model','action.webhook':'Action'};
+function methodLabel(node){ return (node&&_METHOD[node.type])||'Model'; }
+
+/* "How this was answered" — show the flow + method + the agent's trace (RAG sources, SQL, etc.) */
+function renderChatHow(app, ares, agentNode){
+  const chips=(app.nodes||[]).slice().sort((a,b)=>a.x-b.x).map(n=>{ const d=TYPES[n.type];
+    return `<span class="cs-fchip" style="border-color:${hex(d.color)}66;color:${hex(d.color)}">${d.icon} ${esc(d.name)}</span>`;
+  }).join('<span class="ask-arrow">→</span>');
+  let steps='';
+  if(ares){
+    if(ares.tables&&ares.tables.length){
+      const rag=agentNode&&agentNode.type==='model.rag';
+      steps+='<div class="cs-srow">'+(rag?'📚 Knowledge base passages: ':'🗄 Data tables: ')+
+        ares.tables.map(t=>`<span class="tbl-chip">${esc(t)}</span>`).join(' ')+'</div>';
+    }
+    (ares.steps||[]).forEach(s=>{
+      if(s.type==='think') steps+=`<div class="ag-step ag-think">💭 ${esc(s.text)}</div>`;
+      else if(s.type==='router') steps+=`<div class="ag-step ag-route">🧭 router → ${esc(s.tier)} · ${esc(s.reason)}</div>`;
+      else if(s.type==='tool_call') steps+=`<div class="ag-step ag-call">🔧 <b>${esc(s.tool)}</b><div class="ag-code">${esc(s.input)}</div></div>`;
+      else if(s.type==='tool_result') steps+=`<div class="ag-step ag-res">↳ ${esc(s.summary)}</div>`;
+    });
+    if(ares.model) steps+=`<div class="ag-step ag-model">⚙ model: <b>${esc(ares.model)}</b> · ${esc(ares.provider||'')}</div>`;
+  }
+  return `<details class="cs-how"><summary>⚙ How this was answered</summary>`+
+    `<div class="cs-flow">${chips}</div>${steps}</details>`;
+}
+
 /* render a chat answer by its output-node kind — text is the default */
 function renderChatOutput(res, fallback){
   if(!res) return `<div class="cs-text">${esc(fallback||'(no output)')}</div>`;
@@ -1728,10 +1833,19 @@ function link(s,t){ state.edges.push({id:uid('e'),source:s,target:t}); }
 /* ============================================================
    BOOT
    ============================================================ */
+function fmtK(n){ return n>=1000 ? (n/1000).toFixed(1)+'k' : ''+n; }
+async function refreshUsage(){
+  try{ const u=await (await fetch('/api/usage')).json();
+    const cached=(u.hits||0)+(u.sem_hits||0), saved=(u.saved_usd||0)+(u.sem_saved||0);
+    document.getElementById('usageMeter').innerHTML=
+      `🪙 ${fmtK(u.total_tokens||0)} tok · $${(u.cost_usd||0).toFixed(4)} · ♻ ${cached} cached <b>($${saved.toFixed(4)} saved)</b>`;
+  }catch(e){}
+}
 function boot(){
   buildPalette();
   loadSample();        // a flow waits in the builder
   setMode('chat');     // consumers land in Chat; engineers toggle to 🛠 Builder
+  refreshUsage(); setInterval(refreshUsage, 4000);
 }
 boot();
 </script>

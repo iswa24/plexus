@@ -26,28 +26,37 @@ def cli_model(model_id: str | None) -> str:
 
 async def claude_run(prompt: str, system: str | None = None,
                      model: str | None = None, timeout: int = 120) -> str:
-    exe = shutil.which("claude")
-    if not exe:
-        raise RuntimeError("claude CLI not found on PATH")
-    cmd = [exe, "-p", prompt, "--output-format", "json"]
-    if model:
-        cmd += ["--model", model]
-    if system:
-        cmd += ["--system-prompt", system]  # replace the default coding prompt
-    proc = await asyncio.create_subprocess_exec(
-        *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
-    )
-    try:
-        out, err = await asyncio.wait_for(proc.communicate(), timeout=timeout)
-    except asyncio.TimeoutError:
-        proc.kill()
-        raise RuntimeError("claude CLI timed out")
-    if proc.returncode != 0:
-        raise RuntimeError(f"claude CLI error: {(err or b'').decode()[:300]}")
-    try:
-        data = json.loads(out.decode())
-    except json.JSONDecodeError:
-        return out.decode().strip()
-    if data.get("is_error"):
-        raise RuntimeError(f"claude CLI: {str(data.get('result'))[:300]}")
-    return (data.get("result") or "").strip()
+    from .. import cache  # local import to avoid cycles
+
+    async def _call():
+        exe = shutil.which("claude")
+        if not exe:
+            raise RuntimeError("claude CLI not found on PATH")
+        cmd = [exe, "-p", prompt, "--output-format", "json"]
+        if model:
+            cmd += ["--model", model]
+        if system:
+            cmd += ["--system-prompt", system]  # replace the default coding prompt
+        proc = await asyncio.create_subprocess_exec(
+            *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+        )
+        try:
+            out, err = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+        except asyncio.TimeoutError:
+            proc.kill()
+            raise RuntimeError("claude CLI timed out")
+        if proc.returncode != 0:
+            raise RuntimeError(f"claude CLI error: {(err or b'').decode()[:300]}")
+        try:
+            data = json.loads(out.decode())
+        except json.JSONDecodeError:
+            return (out.decode().strip(), 0, 0, 0.0)
+        if data.get("is_error"):
+            raise RuntimeError(f"claude CLI: {str(data.get('result'))[:300]}")
+        u = data.get("usage") or {}
+        it = (u.get("input_tokens") or 0) + (u.get("cache_read_input_tokens") or 0)
+        ot = u.get("output_tokens") or 0
+        cost = float(data.get("total_cost_usd") or cache.cost_of(model or "", it, ot))
+        return ((data.get("result") or "").strip(), it, ot, cost)
+
+    return await cache.cached_call("claudecode", model or "", system or "", prompt, _call)

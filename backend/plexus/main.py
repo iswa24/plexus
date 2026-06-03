@@ -1,7 +1,9 @@
 """FastAPI app: app registry REST + run WebSocket + static frontend."""
 from __future__ import annotations
 
+import json
 import os
+import re
 
 from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
@@ -10,6 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from .audit import AuditLog
 from .auth import principal_from_headers
 from .config import get_settings
+from . import cache
 from .connectors import llm
 from .executor import execute
 from .generator import generate_app
@@ -34,6 +37,13 @@ audit = AuditLog(settings.db_path)
 @app.get("/api/health")
 def health():
     return {"ok": True, "demoMode": settings.demo_mode}
+
+
+@app.get("/api/usage")
+def usage():
+    """Token usage, model cost, and cache savings (the response cache means an
+    identical model call is never paid for twice)."""
+    return cache.stats()
 
 
 # ---------------------------------------------------------------- registry
@@ -73,37 +83,58 @@ def get_audit(limit: int = 100):
     return audit.recent(limit)
 
 
-# ---------------------------------------------------------------- run a SAVED app (reuse)
-@app.post("/api/apps/{app_id}/run")
-async def run_saved_app(app_id: str, body: dict, request: Request):
-    """Run a saved agent again and again, by id, with inputs. Returns each node's
-    output. This turns a built+validated agent into a callable service (script it,
-    schedule it, embed it) — the same agent, no rebuild."""
-    stored = registry.get(app_id)
-    if not stored:
-        raise HTTPException(status_code=404, detail="app not found")
-    app_def = AppDef(**stored)
-    principal = principal_from_headers({k.lower(): v for k, v in request.headers.items()})
+# ---------------------------------------------------------------- run helpers + saved app
+def _pick(results: dict, app_def) -> str:
+    types = {n.id: n.type for n in app_def.nodes}
+    for pref in ("output.document", "output.text"):
+        for nid, o in results.items():
+            if types.get(nid) == pref and isinstance(o, dict) and o.get("value"):
+                return o["value"]
+    for nid, o in results.items():
+        if types.get(nid, "").startswith(("model", "action")) and isinstance(o, dict) and o.get("value"):
+            return o["value"]
+    return ""
+
+
+async def _run_def(app_def, inputs, principal):
     results: dict = {}
 
     async def emit(frame: dict):
         if frame.get("event") == "node" and frame.get("status") == "done":
             results[frame["nodeId"]] = frame.get("output")
 
-    await execute(app_def, (body or {}).get("inputs", {}), settings, principal, emit, audit)
-    # convenience: pick the "answer" — prefer output.text, then model nodes, never inputs
-    types = {n.id: n.type for n in app_def.nodes}
+    await execute(app_def, inputs, settings, principal, emit, audit)
+    return results, _pick(results, app_def)
 
-    def _pick() -> str:
-        for nid, o in results.items():
-            if types.get(nid) == "output.text" and isinstance(o, dict) and o.get("value"):
-                return o["value"]
-        for nid, o in results.items():
-            if types.get(nid, "").startswith("model") and isinstance(o, dict) and o.get("value"):
-                return o["value"]
-        return ""
 
-    return {"appId": app_id, "name": app_def.name, "results": results, "answer": _pick()}
+@app.post("/api/apps/{app_id}/run")
+async def run_saved_app(app_id: str, body: dict, request: Request):
+    """Run a saved agent by id. FREE cache-first: identical/reworded questions
+    (matched by a zero-cost deterministic key) reuse the prior answer with NO
+    model call and NO cost."""
+    stored = registry.get(app_id)
+    if not stored:
+        raise HTTPException(status_code=404, detail="app not found")
+    app_def = AppDef(**stored)
+    principal = principal_from_headers({k.lower(): v for k, v in request.headers.items()})
+    inputs = (body or {}).get("inputs", {})
+    inp = next((n for n in app_def.nodes if n.type.startswith("input")), None)
+    question = (inputs.get(inp.id) if inp else "") or (inp.config.get("value") if inp else "") or ""
+
+    key = cache.cheap_key(question)
+    hit = cache.answer_get(key) if key else None
+    if hit:  # no model call → $0
+        p = hit["payload"]
+        return {"appId": app_id, "name": app_def.name, "results": p["results"], "answer": p["answer"],
+                "cached": "semantic", "saved": hit["cost"], "run_cost": 0.0}
+
+    c0 = cache.stats()["cost_usd"]
+    results, answer = await _run_def(app_def, inputs, principal)
+    run_cost = cache.stats()["cost_usd"] - c0
+    if key:
+        cache.answer_put(key, {"app": stored, "results": results, "answer": answer}, run_cost)
+    return {"appId": app_id, "name": app_def.name, "results": results, "answer": answer,
+            "cached": False, "run_cost": run_cost}
 
 
 # ---------------------------------------------------------------- route (reuse-first)
@@ -125,25 +156,14 @@ def _caps(a: dict) -> str:
     return "; ".join(parts)
 
 
-@app.post("/api/route")
-async def route_question(body: dict):
-    """Match a question to an EXISTING registered agent, or signal 'build new'.
-    This is the production path: reuse a validated pipeline (pass the question as
-    input) instead of generating a fresh agent on every query."""
-    import json
-    import re
-
-    prompt = (body or {}).get("prompt", "").strip()
-    if not prompt:
-        raise HTTPException(status_code=400, detail="prompt is required")
+async def _match_agent(prompt: str) -> dict:
+    """LLM router: match a question to the best registered agent, or NONE."""
     apps = registry.list()
     if not apps:
         return {"match": False, "reason": "no agents registered yet"}
-
     listing = "\n".join(
         f'- id="{a["id"]}" name="{a.get("name","")}" capability="{a.get("description") or _caps(a)}"'
-        for a in apps
-    )
+        for a in apps)
     ask = (f'User question: "{prompt}"\n\nExisting agents:\n{listing}\n\n'
            "Pick the single agent that can already answer this by just receiving the question as input. "
            "Only match if it genuinely fits the same data/capability; otherwise NONE.\n"
@@ -154,7 +174,6 @@ async def route_question(body: dict):
         return {"match": False, "reason": f"router error: {exc}"[:160]}
     if not out:
         return {"match": False, "reason": "router unavailable (no model provider)"}
-
     dec = {"id": "NONE", "reason": "", "confidence": 0}
     try:
         dec = json.loads(re.search(r"\{.*\}", out, re.S).group(0))
@@ -170,6 +189,47 @@ async def route_question(body: dict):
         return {"match": True, "appId": a["id"], "name": a.get("name"),
                 "reason": dec.get("reason", ""), "confidence": conf}
     return {"match": False, "reason": dec.get("reason") or "no existing agent fits"}
+
+
+@app.post("/api/route")
+async def route_question(body: dict):
+    """Match a question to an existing registered agent (or signal 'build new')."""
+    prompt = (body or {}).get("prompt", "").strip()
+    if not prompt:
+        raise HTTPException(status_code=400, detail="prompt is required")
+    return await _match_agent(prompt)
+
+
+@app.post("/api/ask")
+async def ask(body: dict, request: Request):
+    """Consumer entry — FREE cache-first, then route + run. A cache hit renders the
+    stored answer with ZERO model calls (so a repeated/reworded question costs $0).
+    On miss: route to an agent, run it (passing the question as input), and cache."""
+    prompt = (body or {}).get("prompt", "").strip()
+    if not prompt:
+        raise HTTPException(status_code=400, detail="prompt is required")
+    principal = principal_from_headers({k.lower(): v for k, v in request.headers.items()})
+
+    key = cache.cheap_key(prompt)
+    hit = cache.answer_get(key) if key else None
+    if hit:  # zero model calls
+        p = hit["payload"]
+        return {"match": True, "cached": "semantic", "saved": hit["cost"], "run_cost": 0.0,
+                "app": p["app"], "results": p["results"], "answer": p["answer"]}
+
+    routed = await _match_agent(prompt)
+    if not routed.get("match"):
+        return {"match": False, "reason": routed.get("reason", "")}
+    stored = registry.get(routed["appId"])
+    app_def = AppDef(**stored)
+    inp = next((n for n in app_def.nodes if n.type.startswith("input")), None)
+    inputs = {inp.id: prompt} if inp else {}
+    c0 = cache.stats()["cost_usd"]
+    results, answer = await _run_def(app_def, inputs, principal)
+    run_cost = cache.stats()["cost_usd"] - c0
+    cache.answer_put(key, {"app": stored, "results": results, "answer": answer}, run_cost)
+    return {"match": True, "cached": False, "run_cost": run_cost,
+            "app": stored, "results": results, "answer": answer}
 
 
 # ---------------------------------------------------------------- generate
