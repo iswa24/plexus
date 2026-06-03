@@ -445,6 +445,22 @@ const TYPES = {
     summary:n=>'🤖 agent · tools: '+((n.config.tools||[]).join(', ')||'none')+'\n'+oneline(n.config.goal),
     badge:'tool-use loop',
   },
+  'model.nl2sql': {
+    cat:'Model', name:'NL→SQL Agent', icon:'🧮', color:'#f97316',
+    defaults:{ modelId:'claude-sonnet-4-5', goal:'@{question}', maxSteps:6, maxTokens:1500 },
+    fields:[
+      {k:'modelId', t:'select', label:'Model (Anthropic)', options:[
+        'claude-opus-4-1',
+        'claude-sonnet-4-5',
+        'claude-3-5-sonnet-latest',
+        'claude-3-5-haiku-latest',
+      ]},
+      {k:'goal', t:'textarea', refs:true, label:'Question (natural language → SQL)'},
+      {k:'maxSteps', t:'number', label:'Max SQL steps'},
+    ],
+    summary:n=>'🧮 NL→SQL · '+shortModel(n.config.modelId)+'\n'+oneline(n.config.goal),
+    badge:'SQLite · Anthropic',
+  },
   'output.text': {
     cat:'Output', name:'Text Output', icon:'📄', color:'var(--pink)',
     defaults:{template:'## Analysis\n@{analysis}'},
@@ -462,8 +478,11 @@ const PALETTE_ORDER = ['Input','Source','Model','Output'];
 
 /* ---------- helpers ---------- */
 function oneline(s){ s=(s||'').replace(/\s+/g,' ').trim(); return s.length>70?s.slice(0,70)+'…':s; }
-function shortModel(m){ if(!m)return''; if(m.includes('claude'))return m.split('.')[1].replace(/-\d.*/,'').replace('claude','Claude ');
-  return m.split('.')[1]?.split('-')[0]||m; }
+function shortModel(m){ if(!m)return'';
+  let base=m.includes('.')?m.split('.').pop():m;   // bedrock 'anthropic.claude-…' → 'claude-…'
+  base=base.replace(/-\d.*$/,'').replace(/-latest$/,'');
+  if(base.startsWith('claude')) base=base.replace(/^claude-?/,'Claude ');
+  return base.replace(/-/g,' ').replace(/\s+/g,' ').trim()||m; }
 function esc(s){ return (s+'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 function cssVar(v){ return v.startsWith('var(')? getComputedStyle(document.documentElement).getPropertyValue(v.slice(4,-1)).trim() : v; }
 function uid(p){ return p+'_'+(state.idc++).toString(36); }
@@ -966,7 +985,7 @@ function appendBubble(kind, html){
 
 function computeAnswerNodes(){
   // models stream token-by-token → best for a chat answer; fall back to text outputs
-  const models=state.nodes.filter(n=>n.type==='model.bedrock'||n.type==='model.agent').map(n=>n.id);
+  const models=state.nodes.filter(n=>n.type==='model.bedrock'||n.type==='model.agent'||n.type==='model.nl2sql').map(n=>n.id);
   if(models.length) return models;
   return state.nodes.filter(n=>n.type==='output.text').map(n=>n.id);
 }

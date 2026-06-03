@@ -9,3 +9,4 @@ python-dotenv>=1.0
 boto3>=1.34
 neo4j>=5.18
 trino>=0.328
+anthropic>=0.40       # direct Anthropic API (NL2SQL agent)

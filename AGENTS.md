@@ -35,7 +35,9 @@ plexus/
 │   │   ├── auth.py          identity / Trino-OBO entry point
 │   │   ├── config.py        env settings (PLEXUS_*)
 │   │   ├── generator.py     build an App Definition from a NL prompt (POST /api/generate)
-│   │   └── connectors/      agent · bedrock · neo4j · trino · demo_data
+│   │   └── connectors/      agent · bedrock · neo4j · trino · nl2sql · sqldb · demo_data
+│   ├── scripts/             seed_security.py (seed SQLite DBs) · test_nl2sql.py (live test)
+│   ├── data/                seeded SQLite DBs (gitignored; regenerate via seed script)
 │   ├── tests/               pytest suite (executor, demo e2e, API)
 │   ├── requirements.txt · requirements-dev.txt · run.sh · pytest.ini · .env.example
 ├── frontend/index.html      the canvas UI (vanilla JS, served by the backend)

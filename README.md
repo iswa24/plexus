@@ -66,6 +66,36 @@ Connector libs are imported lazily, so demo mode runs on the core deps alone.
   configured, a deterministic keyword heuristic in demo mode. The ✨ Generate button
   loads it onto the canvas, fully editable.
 
+## Real-time NL2SQL test (security databases)
+
+A working natural-language → SQL agent over two related SQLite databases, powered
+by the direct Anthropic API. SQLite stands in for Trino now (same federated-query
+shape via `ATTACH`); swapping in real Trino later is a connector change.
+
+```bash
+cd backend
+.venv/bin/pip install anthropic          # one-time
+python scripts/seed_security.py          # creates data/incidents.db + data/assets.db
+echo 'PLEXUS_ANTHROPIC_API_KEY=sk-ant-...' >> .env   # your key (gitignored)
+
+# CLI: ask 3 questions; pass a model to compare
+.venv/bin/python scripts/test_nl2sql.py
+.venv/bin/python scripts/test_nl2sql.py claude-3-5-haiku-latest
+```
+
+Or in the UI: drag the **🧮 NL→SQL Agent** card, set the question, pick a model,
+Run (or ▷ Preview). The card streams its trace: reasoning → the SQL it wrote →
+rows → answer.
+
+- **Databases** (`scripts/seed_security.py`): `incidents`/`alerts` (main) +
+  `assets`/`identities` (attached as `assets.`). They relate, so cross-database
+  questions work (e.g. *"which critical assets have open incidents, and do their
+  owners have MFA?"*).
+- **Without a key** the agent runs a representative query against the real data
+  (demo fallback) so the UI still works.
+- **Multiple models**: the card's Model dropdown / the CLI's model arg switch
+  Claude tiers (Opus / Sonnet / Haiku) to compare quality and latency.
+
 ## Configuration (environment variables)
 
 All settings use the `PLEXUS_` prefix (loaded from the environment or a `.env`

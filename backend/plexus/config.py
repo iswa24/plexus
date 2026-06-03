@@ -23,6 +23,14 @@ class Settings(BaseSettings):
     aws_region: str = "us-east-1"
     bedrock_default_model: str = "anthropic.claude-3-5-sonnet-20241022-v2:0"
 
+    # --- Anthropic (direct API) ---
+    anthropic_api_key: str = ""
+    anthropic_model: str = "claude-sonnet-4-5"
+
+    # --- NL2SQL SQLite databases (seed: python scripts/seed_security.py) ---
+    incidents_db: str = "data/incidents.db"
+    assets_db: str = "data/assets.db"
+
     # --- Neo4j ---
     neo4j_uri: str = "bolt://localhost:7687"
     neo4j_user: str = "neo4j"
