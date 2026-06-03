@@ -1,0 +1,226 @@
+"""Generate an App Definition from a natural-language description.
+
+Two paths:
+- demo mode (or Bedrock unavailable): a deterministic heuristic that assembles a
+  sensible card graph from keywords in the prompt.
+- live: Bedrock (Converse) is asked to emit an App Definition JSON, which is then
+  validated and laid out. Falls back to the heuristic on any failure.
+"""
+from __future__ import annotations
+
+import asyncio
+import json
+import re
+from collections import deque
+
+from .config import Settings
+from .models import AppDef
+
+VALID_TYPES = {
+    "input.text", "input.dropdown",
+    "source.trino", "source.neo4j",
+    "model.bedrock", "model.agent",
+    "output.text", "output.table",
+}
+
+SYSTEM = """You design "Plexus" apps. Output ONLY one JSON object, no prose:
+{"name": str, "nodes": [...], "edges": [...]}
+
+Node types and their config keys:
+- input.text:     {"label","placeholder","value"}
+- input.dropdown: {"label","options" (comma-separated string),"value"}
+- source.trino:   {"catalog","schema","sql","maxRows"}     // SQL may embed @{ref}
+- source.neo4j:   {"query"}                                 // Cypher may embed @{ref}
+- model.bedrock:  {"system","prompt","temperature","maxTokens"} // prompt embeds @{ref}
+- model.agent:    {"goal","tools" (subset of ["trino","neo4j"]),"system","maxSteps"} // autonomous tool-use loop
+- output.text:    {"template"}                              // embeds @{ref}
+- output.table:   {"source"}                                // a single @{ref} to a rows node
+
+Each node: {"id": short unique string, "type": one of the above, "label": short string, "config": {...}}.
+Each edge: {"id": string, "source": nodeId, "target": nodeId}. Edges define dependency order.
+References: inside any text field, @{x} injects an upstream node's output, where x is the
+target node's slugified label (lowercase, words joined by underscores), e.g. @{question}, @{trino}.
+
+Rules:
+- Always include at least one input.* and one output.*.
+- Use model.agent when the task needs the model to DECIDE which data to fetch; otherwise use
+  source nodes feeding a model.bedrock.
+- Do NOT include positions. Output JSON only."""
+
+
+async def generate_app(prompt: str, settings: Settings) -> dict:
+    raw = None
+    if not settings.demo_mode:
+        raw = await _llm_generate(prompt, settings)
+    if raw is None:
+        raw = _heuristic(prompt)
+    return _normalize(raw, prompt)
+
+
+# ---------------------------------------------------------------- live (Bedrock)
+async def _llm_generate(prompt: str, settings: Settings) -> dict | None:
+    try:
+        import boto3  # noqa: WPS433 (lazy import by design)
+    except ImportError:
+        return None
+    try:
+        client = boto3.client("bedrock-runtime", region_name=settings.aws_region)
+        resp = await asyncio.to_thread(
+            client.converse,
+            modelId=settings.bedrock_default_model,
+            messages=[{"role": "user", "content": [{"text": prompt}]}],
+            system=[{"text": SYSTEM}],
+            inferenceConfig={"temperature": 0.2, "maxTokens": 2000},
+        )
+        text = "".join(b.get("text", "") for b in resp["output"]["message"]["content"])
+        return _extract_json(text)
+    except Exception:
+        return None
+
+
+def _extract_json(text: str) -> dict | None:
+    m = re.search(r"\{.*\}", text or "", re.DOTALL)
+    if not m:
+        return None
+    try:
+        data = json.loads(m.group(0))
+        return data if isinstance(data, dict) else None
+    except json.JSONDecodeError:
+        return None
+
+
+# ---------------------------------------------------------------- heuristic
+def _heuristic(prompt: str) -> dict:
+    p = (prompt or "").lower()
+    nodes: list[dict] = []
+    edges: list[dict] = []
+
+    def add(t, label, config):
+        nid = t.split(".")[-1] + "_" + str(len(nodes))
+        nodes.append({"id": nid, "type": t, "label": label, "config": config})
+        return nid
+
+    def link(a, b):
+        edges.append({"id": "e" + str(len(edges)), "source": a, "target": b})
+
+    use_trino = any(k in p for k in
+                    ["warehouse", "trino", "sql", "incident", "table", "record",
+                     "data", "log", "query", "database", "report"])
+    use_graph = any(k in p for k in
+                    ["graph", "neo4j", "related", "entit", "connection", "cypher",
+                     "relationship", "network", "lineage", "blast radius"])
+    use_agent = any(k in p for k in
+                    ["agent", "investigat", "autonomous", "decide", "figure out",
+                     "explore", "triage", "hunt"])
+    if not use_trino and not use_graph:
+        use_trino = True  # sensible default source
+
+    q = add("input.text", "Question",
+            {"label": "Question", "placeholder": "Ask…", "value": (prompt or "").strip()[:140]})
+
+    if use_agent:
+        tools = ([t for t, on in (("trino", use_trino), ("neo4j", use_graph)) if on]) or ["trino", "neo4j"]
+        m = add("model.agent", "Agent", {
+            "goal": "@{question}", "tools": tools,
+            "system": "You are an analyst agent. Use the available tools to gather "
+                      "evidence, then give a concise answer with recommended actions.",
+            "maxSteps": 5, "temperature": 0.2, "maxTokens": 1500,
+        })
+        out = add("output.text", "Answer", {"template": "## Result\n@{agent}"})
+        link(q, m)
+        link(m, out)
+    else:
+        t = g = None
+        if use_trino:
+            t = add("source.trino", "Trino", {
+                "catalog": "hive", "schema": "security", "maxRows": 500,
+                "sql": "SELECT *\nFROM incidents\nORDER BY ts DESC\nLIMIT 50",
+            })
+        if use_graph:
+            g = add("source.neo4j", "Neo4j", {
+                "query": ("MATCH (i:Incident)-[r]-(e)\nWHERE i.id IN @{trino}\n"
+                          "RETURN e.name AS entity, labels(e)[0] AS type, type(r) AS rel\nLIMIT 50")
+                if t else "MATCH (n)-[r]-(m)\nRETURN n, r, m LIMIT 50",
+            })
+        prompt_text = "User asked: @{question}"
+        if t:
+            prompt_text += "\n\nWarehouse rows:\n@{trino}"
+        if g:
+            prompt_text += "\n\nGraph entities:\n@{neo4j}"
+        prompt_text += "\n\nAnswer the question using the information above."
+        m = add("model.bedrock", "Bedrock", {
+            "system": "You are a helpful analyst. Be concise and actionable.",
+            "prompt": prompt_text, "temperature": 0.2, "maxTokens": 1500,
+        })
+        out = add("output.text", "Answer", {"template": "## Result\n@{bedrock}"})
+        if t and g:
+            link(t, g)
+        link(q, m)
+        if t:
+            link(t, m)
+        if g:
+            link(g, m)
+        link(m, out)
+        if t:
+            tbl = add("output.table", "Records", {"source": "@{trino}"})
+            link(t, tbl)
+
+    return {"name": _title(prompt), "nodes": nodes, "edges": edges}
+
+
+# ---------------------------------------------------------------- normalize + layout
+def _normalize(raw: dict, prompt: str) -> dict:
+    nodes = [n for n in raw.get("nodes", []) if n.get("type") in VALID_TYPES]
+    seen: set[str] = set()
+    for i, n in enumerate(nodes):
+        nid = n.get("id") or (n["type"].split(".")[-1] + "_" + str(i))
+        while nid in seen:
+            nid = f"{nid}_{i}"
+        n["id"] = nid
+        seen.add(nid)
+        n.setdefault("config", {})
+        n["label"] = n.get("label") or n["type"]
+    ids = {n["id"] for n in nodes}
+    edges = []
+    for i, e in enumerate(raw.get("edges", [])):
+        if e.get("source") in ids and e.get("target") in ids:
+            edges.append({"id": e.get("id") or f"e{i}", "source": e["source"], "target": e["target"]})
+
+    pos = _layout(nodes, edges)
+    for n in nodes:
+        n["position"] = pos.get(n["id"], {"x": 60, "y": 60})
+
+    app = AppDef(name=raw.get("name") or _title(prompt), nodes=nodes, edges=edges)
+    return app.model_dump()
+
+
+def _layout(nodes: list[dict], edges: list[dict]) -> dict:
+    ids = [n["id"] for n in nodes]
+    adj = {nid: [] for nid in ids}
+    indeg = {nid: 0 for nid in ids}
+    for e in edges:
+        adj[e["source"]].append(e["target"])
+        indeg[e["target"]] += 1
+    layer = {nid: 0 for nid in ids}
+    q = deque([nid for nid in ids if indeg[nid] == 0])
+    remaining = dict(indeg)
+    while q:
+        nid = q.popleft()
+        for t in adj[nid]:
+            layer[t] = max(layer[t], layer[nid] + 1)
+            remaining[t] -= 1
+            if remaining[t] == 0:
+                q.append(t)
+    by_layer: dict[int, list[str]] = {}
+    for nid in ids:
+        by_layer.setdefault(layer[nid], []).append(nid)
+    pos = {}
+    for L, members in by_layer.items():
+        for i, nid in enumerate(members):
+            pos[nid] = {"x": 40 + L * 330, "y": 40 + i * 165}
+    return pos
+
+
+def _title(prompt: str) -> str:
+    words = re.findall(r"[A-Za-z0-9]+", prompt or "")[:6]
+    return " ".join(words).title() if words else "Generated App"

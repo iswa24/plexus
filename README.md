@@ -18,6 +18,7 @@ plexus/
 │   │   ├── auth.py          identity / OBO entry point
 │   │   ├── config.py        env-driven settings (PLEXUS_*)
 │   │   ├── models.py        App Definition Pydantic schemas
+│   │   ├── generator.py     generate an App Definition from a natural-language prompt
 │   │   └── connectors/      agent · bedrock · neo4j · trino (+ demo_data)
 │   ├── requirements.txt
 │   └── run.sh
@@ -60,6 +61,10 @@ Connector libs are imported lazily, so demo mode runs on the core deps alone.
 - **Identity & audit**: the caller's identity (`auth.py`) is propagated to Trino
   (user + OBO token) for row-level security, and every node execution is written
   to the audit log.
+- **Generate from a prompt**: `POST /api/generate {prompt}` (`generator.py`) returns
+  an App Definition built from a plain-English description — Bedrock-generated when
+  configured, a deterministic keyword heuristic in demo mode. The ✨ Generate button
+  loads it onto the canvas, fully editable.
 
 ## Configuration (environment variables)
 

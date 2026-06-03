@@ -55,3 +55,31 @@ def test_ws_run_streams_and_resolves():
 
     done = {f["nodeId"]: f for f in events if f.get("event") == "node" and f["status"] == "done"}
     assert done["o"]["output"]["value"] == "hi there"
+
+
+def test_generate_returns_runnable_app():
+    r = client.post("/api/generate", json={
+        "prompt": "Summarize recent incidents from the warehouse and list related "
+                  "entities from the graph"})
+    assert r.status_code == 200
+    app_def = r.json()
+    types = {n["type"] for n in app_def["nodes"]}
+    assert any(t.startswith("input") for t in types)
+    assert any(t.startswith("output") for t in types)
+    assert "source.trino" in types and "source.neo4j" in types
+    # every node has a position assigned by the layout pass
+    assert all("position" in n for n in app_def["nodes"])
+    # edges only reference existing nodes
+    ids = {n["id"] for n in app_def["nodes"]}
+    assert all(e["source"] in ids and e["target"] in ids for e in app_def["edges"])
+
+
+def test_generate_picks_agent_for_autonomous_phrasing():
+    r = client.post("/api/generate", json={"prompt": "an agent that investigates phishing autonomously"})
+    assert r.status_code == 200
+    types = {n["type"] for n in r.json()["nodes"]}
+    assert "model.agent" in types
+
+
+def test_generate_requires_prompt():
+    assert client.post("/api/generate", json={"prompt": "  "}).status_code == 400

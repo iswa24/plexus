@@ -34,6 +34,7 @@ plexus/
 │   │   ├── audit.py         per-node audit log
 │   │   ├── auth.py          identity / Trino-OBO entry point
 │   │   ├── config.py        env settings (PLEXUS_*)
+│   │   ├── generator.py     build an App Definition from a NL prompt (POST /api/generate)
 │   │   └── connectors/      agent · bedrock · neo4j · trino · demo_data
 │   ├── tests/               pytest suite (executor, demo e2e, API)
 │   ├── requirements.txt · requirements-dev.txt · run.sh · pytest.ini · .env.example

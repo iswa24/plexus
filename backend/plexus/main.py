@@ -11,6 +11,7 @@ from .audit import AuditLog
 from .auth import principal_from_headers
 from .config import get_settings
 from .executor import execute
+from .generator import generate_app
 from .models import AppDef
 from .registry import Registry
 
@@ -69,6 +70,15 @@ def delete_app(app_id: str):
 @app.get("/api/audit")
 def get_audit(limit: int = 100):
     return audit.recent(limit)
+
+
+# ---------------------------------------------------------------- generate
+@app.post("/api/generate")
+async def generate(body: dict):
+    prompt = (body or {}).get("prompt", "").strip()
+    if not prompt:
+        raise HTTPException(status_code=400, detail="prompt is required")
+    return await generate_app(prompt, settings)
 
 
 # ---------------------------------------------------------------- run (stream)

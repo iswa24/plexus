@@ -196,6 +196,53 @@
     background:#16321f;border:1px solid rgba(34,197,94,.45);color:#bff0d0;padding:10px 18px;
     border-radius:10px;font-size:13px;z-index:200;opacity:0;transition:.25s;pointer-events:none}
   .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
+  /* chat-style preview (use mode) */
+  .btn.preview{background:rgba(56,189,248,.14);border-color:rgba(56,189,248,.4);color:#7dd3fc}
+  .btn.preview:hover{background:rgba(56,189,248,.22)}
+  .chat-modal{width:680px;max-width:94vw;height:80vh;max-height:80vh}
+  .chat-badge{font-size:10px;text-transform:uppercase;letter-spacing:.6px;color:var(--run);
+    border:1px solid rgba(56,189,248,.4);border-radius:20px;padding:2px 9px;margin-right:10px}
+  .chat-transcript{flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:13px}
+  .chat-empty{margin:auto;color:var(--muted);font-size:13px;text-align:center;line-height:1.6}
+  .bubble{max-width:82%;padding:11px 14px;border-radius:15px;font-size:13.5px;line-height:1.55;
+    white-space:pre-wrap;word-break:break-word}
+  .bubble.user{align-self:flex-end;background:linear-gradient(135deg,var(--accent),var(--accent2));
+    color:#fff;border-bottom-right-radius:5px}
+  .bubble.bot{align-self:flex-start;background:var(--panel2);border:1px solid var(--line);
+    color:var(--text);border-bottom-left-radius:5px}
+  .bubble .trace{font-size:11px;color:var(--muted);margin-bottom:7px;padding-left:9px;
+    border-left:2px solid rgba(94,234,212,.5)}
+  .typing{opacity:.6}
+  .chat-input{border-top:1px solid var(--line);padding:13px 15px;display:flex;flex-direction:column;gap:10px}
+  .chat-fields{display:flex;gap:10px;flex-wrap:wrap}
+  .chat-field{flex:1;min-width:150px}
+  .chat-field.wide{flex-basis:100%}
+  .chat-field label{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;
+    display:block;margin-bottom:4px;font-weight:600}
+  .chat-field input,.chat-field select,.chat-area{width:100%;background:var(--bg);border:1px solid var(--line);
+    color:var(--text);border-radius:9px;padding:11px 13px;font-size:14px;font-family:inherit}
+  .chat-area{line-height:1.55;resize:vertical;min-height:96px}
+  .chat-field input:focus,.chat-field select:focus,.chat-area:focus{outline:none;border-color:var(--accent2)}
+  .chat-sendrow{display:flex;align-items:center;justify-content:flex-end;gap:12px}
+  .chat-kbd{font-size:11px;color:var(--muted)}
+  .chat-send:disabled{opacity:.6;cursor:default}
+
+  /* generate-from-prompt */
+  .btn.gen{background:linear-gradient(135deg,rgba(99,102,241,.22),rgba(236,72,153,.22));
+    border-color:rgba(129,140,248,.45);color:#d9c9ff;font-weight:600}
+  .btn.gen:hover{filter:brightness(1.12)}
+  #genModal .modal{width:560px}
+  #genPrompt{width:100%;background:var(--bg);border:1px solid var(--line);color:var(--text);
+    border-radius:10px;padding:12px 14px;font-size:14px;font-family:inherit;line-height:1.55;
+    min-height:120px;resize:vertical}
+  #genPrompt:focus{outline:none;border-color:var(--accent2)}
+  .gen-examples{margin:12px 0 16px;line-height:2.1}
+  .gen-ex{background:var(--panel2);border:1px solid var(--line);color:var(--accent2);
+    border-radius:14px;padding:5px 11px;font-size:11.5px;margin:0 6px 6px 0;cursor:pointer}
+  .gen-ex:hover{border-color:#3a465c;background:#1b2230}
+  .gen-note{font-size:11px;color:var(--muted);margin-top:12px;line-height:1.5}
+  #genBtn:disabled{opacity:.6;cursor:default}
 </style>
 </head>
 <body>
@@ -216,6 +263,7 @@
     <input class="app-name" id="appName" value="Incident Triage Assistant" oninput="markDirty()" />
     <span class="saved-tag" id="savedTag"></span>
     <div class="spacer"></div>
+    <button class="btn gen" onclick="openGenerate()">✨ Generate</button>
     <button class="btn ghost" onclick="newApp()">＋ New</button>
     <button class="btn ghost" onclick="loadSample()">↻ Sample</button>
     <button class="btn save" id="saveBtn" onclick="saveCurrentApp()">💾 Save</button>
@@ -223,7 +271,8 @@
     <button class="btn ghost" onclick="exportApp()">⤓ Export</button>
     <button class="btn ghost" onclick="document.getElementById('importFile').click()">⤒ Import</button>
     <input type="file" id="importFile" accept=".json" style="display:none" onchange="importApp(event)"/>
-    <button class="btn primary" id="runBtn" onclick="runApp()">▶ Run</button>
+    <button class="btn preview" onclick="openChat()" title="Use the app like an end user (chat)">▷ Preview</button>
+    <button class="btn primary" id="runBtn" onclick="runApp()" title="Run on the canvas (watch each node)">▶ Run</button>
   </div>
 
   <div class="body">
@@ -260,6 +309,38 @@
         <button class="btn ghost" onclick="closeLibrary()">✕</button>
       </div>
       <div class="modal-body" id="libList"></div>
+    </div>
+  </div>
+
+  <!-- Generate an app from a natural-language description -->
+  <div class="modal-bg" id="genModal" onclick="if(event.target===this)closeGenerate()">
+    <div class="modal">
+      <div class="modal-head"><h3 style="flex:1">✨ Generate an app</h3>
+        <button class="btn ghost" onclick="closeGenerate()">✕</button></div>
+      <div class="modal-body">
+        <div class="field"><label>Describe what you want the app to do</label>
+          <textarea id="genPrompt" placeholder="e.g. Pull recent incidents from the warehouse, expand related entities in the graph, and summarize the risk with recommended next steps."></textarea></div>
+        <div class="gen-examples">
+          <button class="gen-ex" onclick="setGenEx(this)">Summarize today's critical incidents and draft a comms email</button>
+          <button class="gen-ex" onclick="setGenEx(this)">An agent that investigates phishing alerts autonomously</button>
+          <button class="gen-ex" onclick="setGenEx(this)">Show recent access-denied logs and explain the top causes</button>
+        </div>
+        <button class="btn primary" id="genBtn" style="width:100%" onclick="runGenerate()">✨ Generate flow</button>
+        <div class="gen-note">Generates an editable card graph you can tweak and run. In demo mode this uses a built-in template; with Bedrock configured it's model-generated.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Preview (chat-style "use" mode) -->
+  <div class="modal-bg" id="chatModal" onclick="if(event.target===this)closeChat()">
+    <div class="modal chat-modal">
+      <div class="modal-head">
+        <h3 id="chatTitle" style="flex:1">App</h3>
+        <span class="chat-badge">preview</span>
+        <button class="btn ghost" onclick="closeChat()">✕</button>
+      </div>
+      <div class="chat-transcript" id="chatTranscript"></div>
+      <div class="chat-input" id="chatForm"></div>
     </div>
   </div>
   <div class="toast" id="toast"></div>
@@ -431,6 +512,11 @@ function addNode(type,x,y){
   const d=TYPES[type];
   const node={ id:uid(type.split('.')[1]), type, x:Math.round(x), y:Math.round(y),
     config:JSON.parse(JSON.stringify(d.defaults)) };
+  // Auto-place input cards on a tidy left "inputs" rail (still draggable after).
+  if(type.startsWith('input')){
+    const n=state.nodes.filter(z=>z.type.startsWith('input')).length;
+    node.x=40; node.y=40 + n*150;
+  }
   state.nodes.push(node); markDirty(); render(); select(node.id);
   return node;
 }
@@ -821,6 +907,130 @@ function logLine(node,r){
 }
 
 /* ============================================================
+   PREVIEW — chat-style "use mode" (the end-user experience)
+   ============================================================ */
+function openChat(){
+  if(!state.nodes.length){ flashHint('Add some cards first'); return; }
+  document.getElementById('chatTitle').textContent=document.getElementById('appName').value||'App';
+  document.getElementById('chatTranscript').innerHTML=
+    '<div class="chat-empty">Fill in the inputs below and hit <b>Send</b> to use this app —<br/>your question appears on the right, the AI\'s answer on the left.</div>';
+  document.getElementById('chatForm').innerHTML=buildChatForm();
+  document.getElementById('chatModal').classList.add('show');
+}
+function closeChat(){ document.getElementById('chatModal').classList.remove('show'); }
+
+function buildChatForm(){
+  const inputs=state.nodes.filter(n=>n.type.startsWith('input'));
+  let fields='';
+  if(inputs.length){
+    const kd="if((event.metaKey||event.ctrlKey)&&event.key==='Enter')chatSend()";
+    fields='<div class="chat-fields">'+inputs.map(n=>{
+      const c=n.config, lab=esc(c.label||'Input');
+      if(n.type==='input.dropdown'){
+        const opts=(c.options||'').split(',').map(o=>o.trim()).filter(Boolean);
+        return `<div class="chat-field"><label>${lab}</label><select data-node="${n.id}">`+
+          opts.map(o=>`<option ${o===c.value?'selected':''}>${esc(o)}</option>`).join('')+`</select></div>`;
+      }
+      // free-text inputs get a roomy, full-width, resizable box
+      return `<div class="chat-field wide"><label>${lab}</label>`+
+        `<textarea class="chat-area" data-node="${n.id}" placeholder="${esc(c.placeholder||'')}" onkeydown="${kd}">${esc(c.value||'')}</textarea></div>`;
+    }).join('')+'</div>';
+  } else {
+    fields='<div style="font-size:12px;color:var(--muted)">No input cards — this app runs without user input.</div>';
+  }
+  return fields+'<div class="chat-sendrow"><span class="chat-kbd">⌘/Ctrl + ↵</span>'+
+    '<button class="btn primary chat-send" onclick="chatSend()">Send ▷</button></div>';
+}
+
+function chatSend(){
+  const form=document.getElementById('chatForm');
+  const inputs={};
+  form.querySelectorAll('[data-node]').forEach(el=>{ inputs[el.dataset.node]=el.value; });
+  const inputNodes=state.nodes.filter(n=>n.type.startsWith('input'));
+  const textNode=inputNodes.find(n=>n.type==='input.text');
+  const primary=textNode?inputs[textNode.id]:'';
+  const others=inputNodes.filter(n=>n!==textNode)
+    .map(n=>`${n.config.label||'?'}: ${inputs[n.id]}`).filter(s=>!s.endsWith(': ')).join(' · ');
+  let msg=esc(primary||'Run');
+  if(others) msg+=`<div style="font-size:11px;opacity:.85;margin-top:5px">${esc(others)}</div>`;
+  appendBubble('user', msg);
+  runChat(inputs);
+}
+
+function appendBubble(kind, html){
+  const t=document.getElementById('chatTranscript');
+  const empty=t.querySelector('.chat-empty'); if(empty) empty.remove();
+  const b=document.createElement('div'); b.className='bubble '+kind; b.innerHTML=html;
+  t.appendChild(b); t.scrollTop=t.scrollHeight; return b;
+}
+
+function computeAnswerNodes(){
+  // models stream token-by-token → best for a chat answer; fall back to text outputs
+  const models=state.nodes.filter(n=>n.type==='model.bedrock'||n.type==='model.agent').map(n=>n.id);
+  if(models.length) return models;
+  return state.nodes.filter(n=>n.type==='output.text').map(n=>n.id);
+}
+function renderChatAnswer(partials, ids){
+  let html='';
+  ids.forEach(id=>{ const o=partials[id]; if(!o)return;
+    if(o.kind==='agent'){
+      const calls=(o.steps||[]).filter(s=>s.type==='tool_call');
+      if(calls.length) html+=`<div class="trace">🔧 ${calls.map(s=>esc(s.tool)).join(' · ')}</div>`;
+      html+=esc(o.value||'');
+    } else { html+=esc(o.value||''); }
+  });
+  return html;
+}
+
+function runChat(inputs){
+  const send=document.querySelector('.chat-send'); if(send){ send.disabled=true; send.textContent='Running…'; }
+  const bubble=appendBubble('bot','<span class="typing">▍</span>');
+  const ids=computeAnswerNodes(); const partials={};
+  const proto=location.protocol==='https:'?'wss':'ws';
+  const ws=new WebSocket(`${proto}://${location.host}/ws/run`);
+  let done=false;
+  function finish(){ if(done)return; done=true; if(send){ send.disabled=false; send.textContent='Send ▷'; } }
+  ws.onopen=()=>ws.send(JSON.stringify({app:toAppDef(), inputs}));
+  ws.onmessage=ev=>{ let f; try{ f=JSON.parse(ev.data); }catch(e){ return; }
+    if(f.event==='node'){
+      if(f.output!==undefined && ids.includes(f.nodeId)) partials[f.nodeId]=f.output;
+      const ans=renderChatAnswer(partials,ids);
+      bubble.innerHTML=(ans||'<span class="typing">▍</span>')+(ans&&f.status!=='done'?'<span class="typing">▍</span>':'');
+      document.getElementById('chatTranscript').scrollTop=1e9;
+    } else if(f.event==='run_complete'){
+      bubble.innerHTML=renderChatAnswer(partials,ids)||'(no answer produced)';
+      document.getElementById('chatTranscript').scrollTop=1e9; finish();
+    } else if(f.event==='error'){ bubble.innerHTML='⚠ '+esc(f.error); finish(); }
+  };
+  ws.onerror=()=>{ bubble.innerHTML='⚠ cannot reach backend (/ws/run)'; finish(); };
+  ws.onclose=()=>finish();
+}
+
+/* ============================================================
+   GENERATE — build a whole flow from a natural-language prompt
+   ============================================================ */
+function openGenerate(){ document.getElementById('genModal').classList.add('show');
+  setTimeout(()=>document.getElementById('genPrompt').focus(),50); }
+function closeGenerate(){ document.getElementById('genModal').classList.remove('show'); }
+function setGenEx(el){ document.getElementById('genPrompt').value=el.textContent; document.getElementById('genPrompt').focus(); }
+
+async function runGenerate(){
+  const prompt=document.getElementById('genPrompt').value.trim();
+  if(!prompt){ toast('Describe the app first'); return; }
+  const btn=document.getElementById('genBtn'); btn.disabled=true; btn.textContent='✨ Generating…';
+  try{
+    const def=await apiJSON('/api/generate',{method:'POST',body:JSON.stringify({prompt})});
+    closeGenerate();
+    loadAppDef(def);            // load the generated graph onto the canvas
+    state.appId=null;           // it's a fresh, unsaved app
+    document.getElementById('appName').value=def.name||'Generated app';
+    resetView(); markDirty();
+    toast('Generated '+((def.nodes||[]).length)+' cards — edit, then ▶ Run or 💾 Save');
+  }catch(e){ toast('Generate failed — is the backend running?'); }
+  finally{ btn.disabled=false; btn.textContent='✨ Generate flow'; }
+}
+
+/* ============================================================
    IMPORT / EXPORT (App Definition JSON — matches design spec)
    ============================================================ */
 function toAppDef(){
@@ -961,10 +1171,9 @@ function toast(msg){ const t=document.getElementById('toast'); t.textContent=msg
    ============================================================ */
 function loadSample(){
   state.nodes=[]; state.edges=[]; state.results={}; state.idc=1;
-  const q=addNodeAt('input.text',40,60,{label:'Question',placeholder:'Ask…',value:'P1 phishing incidents in the last 24h'});
-  const sev=addNodeAt('input.dropdown',40,220,{label:'Severity',options:'P1, P2, P3',value:'P1'});
+  const q=addNodeAt('input.text',40,140,{label:'Question',placeholder:'Ask…',value:'P1 phishing incidents in the last 24h'});
   const trino=addNodeAt('source.trino',360,60,{catalog:'hive',schema:'security',maxRows:500,
-    sql:"SELECT id, severity, owner, ts\nFROM incidents\nWHERE severity = @{severity}\nORDER BY ts DESC"});
+    sql:"SELECT id, severity, owner, ts\nFROM incidents\nORDER BY ts DESC\nLIMIT 50"});
   const neo=addNodeAt('source.neo4j',360,330,{query:"MATCH (i:Incident)-[r]-(e)\nWHERE i.id IN @{trino}\nRETURN e.name AS entity, labels(e)[0] AS type, type(r) AS rel\nLIMIT 50"});
   const llm=addNodeAt('model.bedrock',690,140,{
     modelId:'anthropic.claude-3-5-sonnet-20241022-v2:0',
@@ -975,7 +1184,7 @@ function loadSample(){
   const tbl=addNodeAt('output.table',1010,300,{source:'@{trino}'});
   // relabel some ids' refName collisions by setting friendly labels
   trino.config.label='Trino'; neo.config.label='Neo4j'; llm.config.label='Bedrock';
-  link(q.id,trino.id); link(sev.id,trino.id); link(trino.id,neo.id);
+  link(trino.id,neo.id);
   link(q.id,llm.id); link(trino.id,llm.id); link(neo.id,llm.id);
   link(llm.id,out.id); link(trino.id,tbl.id);
   document.getElementById('appName').value='Incident Triage Assistant';
