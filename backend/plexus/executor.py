@@ -15,6 +15,7 @@ from .connectors.cypher import run_cypher
 from .connectors.detection import run_detection
 from .connectors.neo4j import run_neo4j
 from .connectors.nl2sql import run_nl2sql
+from .connectors.sources import run_elastic, run_http, run_s3
 from .connectors.trino import run_trino
 from .models import AppDef, Node
 
@@ -120,6 +121,12 @@ async def run_node(node: Node, ctx: RunContext, emit: Emit) -> dict[str, Any]:
         return await run_trino(cfg, ctx, emit)
     if t == "source.neo4j":
         return await run_neo4j(cfg, ctx, emit)
+    if t == "source.http":
+        return await run_http(cfg, ctx, emit)
+    if t == "source.s3":
+        return await run_s3(cfg, ctx, emit)
+    if t == "source.elastic":
+        return await run_elastic(cfg, ctx, emit)
     if t == "model.bedrock":
         return await run_bedrock(cfg, ctx, emit)
     if t == "model.agent":
@@ -134,6 +141,9 @@ async def run_node(node: Node, ctx: RunContext, emit: Emit) -> dict[str, Any]:
         return await run_cypher(cfg, ctx, emit)
     if t == "output.text":
         return {"kind": "text", "value": ctx.resolve(cfg.get("template", ""), for_prompt=False)}
+    if t == "output.document":
+        return {"kind": "document", "title": cfg.get("title", "Document"),
+                "value": ctx.resolve(cfg.get("template", ""), for_prompt=False)}
     if t == "output.table":
         m = REF_RE.search(cfg.get("source", "") or "")
         nid = ctx.ref_index.get(m.group(1).strip()) if m else None
@@ -141,6 +151,11 @@ async def run_node(node: Node, ctx: RunContext, emit: Emit) -> dict[str, Any]:
         if out and out.get("kind") == "rows":
             return out
         return {"kind": "text", "value": "(point this at a rows output)"}
+    if t == "output.json":
+        m = REF_RE.search(cfg.get("source", "") or "")
+        nid = ctx.ref_index.get(m.group(1).strip()) if m else None
+        out = ctx.results.get(nid) if nid else None
+        return {"kind": "json", "value": out}
 
     return {"kind": "text", "value": ""}
 

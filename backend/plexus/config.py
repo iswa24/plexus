@@ -40,6 +40,9 @@ class Settings(BaseSettings):
     neo4j_password: str = ""
     neo4j_database: str = "neo4j"
 
+    # --- Other sources ---
+    elastic_url: str = "http://localhost:9200"
+
     # --- Trino ---
     trino_host: str = "localhost"
     trino_port: int = 8080

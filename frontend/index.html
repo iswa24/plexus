@@ -111,6 +111,21 @@
   .ag-model{color:#93c5fd;margin-bottom:5px}
   .route-tag{background:rgba(196,181,253,.18);border:1px solid rgba(196,181,253,.4);color:#c4b5fd;
     border-radius:9px;padding:0 6px;font-size:9.5px;margin-left:4px}
+  /* document / json outputs */
+  .doc-card{background:#fbfdff;color:#1a2230;border:1px solid var(--line);border-radius:8px;
+    padding:14px 16px;font-size:11.5px;line-height:1.5;max-height:200px;overflow:auto}
+  .doc-card h1{font-size:15px;margin:0 0 8px} .doc-card h2{font-size:13px;margin:10px 0 5px}
+  .doc-card h3{font-size:12px;margin:8px 0 4px} .doc-card p{margin:5px 0}
+  .doc-card ul,.doc-card ol{margin:5px 0;padding-left:18px} .doc-card hr{border:none;border-top:1px solid #dde3ea;margin:8px 0}
+  .doc-card code{background:#eef1f5;border-radius:3px;padding:0 3px;font-size:10.5px}
+  .doc-tbl{border-collapse:collapse;width:100%;margin:6px 0;font-size:10.5px}
+  .doc-tbl th{background:#eef1f5;text-align:left;padding:4px 7px;border:1px solid #dde3ea}
+  .doc-tbl td{padding:4px 7px;border:1px solid #e6eaf0}
+  .doc-dl{margin-top:7px;background:var(--panel2);border:1px solid var(--line);color:var(--accent2);
+    border-radius:7px;padding:4px 10px;font-size:11px;cursor:pointer}
+  .doc-dl:hover{border-color:#3a465c}
+  .json-out{background:#0b0f17;border:1px solid var(--line);border-radius:8px;padding:10px;
+    font-family:ui-monospace,Menlo,monospace;font-size:10.5px;color:#c4cdda;max-height:200px;overflow:auto;white-space:pre-wrap}
   .checks{display:flex;flex-direction:column;gap:7px}
   .chk{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text);
     text-transform:none;letter-spacing:0;font-weight:400;margin:0;cursor:pointer}
@@ -402,8 +417,41 @@ const TYPES = {
     summary:n=>oneline(n.config.query),
     badge:'graph',
   },
+  'source.http': {
+    cat:'Source', name:'HTTP / REST API', icon:'🌐', color:'#0ea5e9',
+    defaults:{url:'https://intel.example.com/indicators', method:'GET', maxRows:200},
+    fields:[
+      {k:'url', t:'text', refs:true, label:'URL (type @ to reference upstream)'},
+      {k:'method', t:'select', label:'Method', options:['GET','POST']},
+      {k:'maxRows', t:'number', label:'Max rows'},
+    ],
+    summary:n=>'🌐 '+oneline(n.config.url),
+    badge:'REST / JSON',
+  },
+  'source.s3': {
+    cat:'Source', name:'S3 Object', icon:'🪣', color:'#f59e0b',
+    defaults:{bucket:'sec-exports', key:'vpn/access-2026-06-03.csv', maxRows:200},
+    fields:[
+      {k:'bucket', t:'text', label:'Bucket'},
+      {k:'key', t:'text', refs:true, label:'Object key (CSV/JSON)'},
+      {k:'maxRows', t:'number', label:'Max rows'},
+    ],
+    summary:n=>'🪣 '+(n.config.bucket||'')+'/'+oneline(n.config.key),
+    badge:'object store',
+  },
+  'source.elastic': {
+    cat:'Source', name:'Elasticsearch', icon:'🔎', color:'#14b8a6',
+    defaults:{index:'siem-auth-*', query:'', maxRows:50},
+    fields:[
+      {k:'index', t:'text', label:'Index'},
+      {k:'query', t:'textarea', code:true, refs:true, label:'Query DSL (JSON; blank = match_all)'},
+      {k:'maxRows', t:'number', label:'Max rows'},
+    ],
+    summary:n=>'🔎 '+(n.config.index||'')+'\n'+oneline(n.config.query||'match_all'),
+    badge:'SIEM logs',
+  },
   'model.bedrock': {
-    cat:'Model', name:'Bedrock LLM', icon:'✦', color:'var(--purple)',
+    cat:'Sub-agents', name:'Bedrock LLM', icon:'✦', color:'var(--purple)',
     defaults:{
       modelId:'anthropic.claude-3-5-sonnet-20241022-v2:0',
       system:'You are a senior security analyst. Be concise and actionable.',
@@ -427,7 +475,7 @@ const TYPES = {
     badge:'Bedrock',
   },
   'model.agent': {
-    cat:'Model', name:'Agent (tools)', icon:'🤖', color:'#14b8a6',
+    cat:'Sub-agents', name:'Agent (tools)', icon:'🤖', color:'#14b8a6',
     defaults:{
       modelId:'anthropic.claude-3-5-sonnet-20241022-v2:0',
       system:'You are a security analyst agent. Use the tools to gather evidence, then give a concise risk summary with recommended actions.',
@@ -453,7 +501,7 @@ const TYPES = {
     badge:'tool-use loop',
   },
   'model.nl2sql': {
-    cat:'Model', name:'NL→SQL Agent', icon:'🧮', color:'#f97316',
+    cat:'Sub-agents', name:'NL→SQL Agent', icon:'🧮', color:'#f97316',
     defaults:{ source:'sqlite', catalog:'', schema:'', tables:'', maxSchemaTables:25, provider:'claudecode', modelId:'claude-sonnet-4-5', goal:'@{question}', maxSteps:6, maxTokens:1500 },
     fields:[
       {k:'source', t:'select', label:'Data source', options:['sqlite','trino']},
@@ -475,7 +523,7 @@ const TYPES = {
     badge:'SQLite / Trino',
   },
   'model.classify': {
-    cat:'Model', name:'Classifier Agent', icon:'🏷', color:'#06b6d4',
+    cat:'Sub-agents', name:'Classifier Agent', icon:'🏷', color:'#06b6d4',
     defaults:{ provider:'claudecode', modelId:'auto', input:'@{alert}',
       categories:'Phishing, Malware, Unauthorized Access, Data Loss, Policy Violation, Other' },
     fields:[
@@ -488,7 +536,7 @@ const TYPES = {
     badge:'triage / routing',
   },
   'model.detection': {
-    cat:'Model', name:'Detection Rule Agent', icon:'🛡', color:'#ef4444',
+    cat:'Sub-agents', name:'Detection Rule Agent', icon:'🛡', color:'#ef4444',
     defaults:{ provider:'claudecode', modelId:'claude-sonnet-4-5', behavior:'@{behavior}', target:'Sigma' },
     fields:[
       {k:'provider', t:'select', label:'Model provider', options:['bedrock','claudecode','anthropic']},
@@ -500,7 +548,7 @@ const TYPES = {
     badge:'detection-as-code',
   },
   'model.cypher': {
-    cat:'Model', name:'Graph Agent (NL→Cypher)', icon:'🕸', color:'#22c55e',
+    cat:'Sub-agents', name:'Graph Agent (NL→Cypher)', icon:'🕸', color:'#22c55e',
     defaults:{ provider:'claudecode', modelId:'auto', goal:'@{question}', graphModel:'' },
     fields:[
       {k:'provider', t:'select', label:'Model provider', options:['bedrock','claudecode','anthropic']},
@@ -523,8 +571,23 @@ const TYPES = {
     fields:[{k:'source', t:'text', refs:true, label:'Source (a @ reference to rows)'}],
     summary:n=>'▦ '+oneline(n.config.source),
   },
+  'output.document': {
+    cat:'Output', name:'Document Output', icon:'📑', color:'var(--pink)',
+    defaults:{title:'Security Report', template:'# @{title}\n\n@{analysis}'},
+    fields:[
+      {k:'title', t:'text', label:'Document title'},
+      {k:'template', t:'textarea', refs:true, label:'Body (markdown; type @ to insert results)'},
+    ],
+    summary:n=>'📑 '+(n.config.title||'Document'),
+  },
+  'output.json': {
+    cat:'Output', name:'JSON Output', icon:'{ }', color:'var(--pink)',
+    defaults:{source:'@{incidents}'},
+    fields:[{k:'source', t:'text', refs:true, label:'Source (a @ reference)'}],
+    summary:n=>'{ } '+oneline(n.config.source),
+  },
 };
-const PALETTE_ORDER = ['Input','Source','Model','Output'];
+const PALETTE_ORDER = ['Input','Source','Sub-agents','Output'];
 
 /* ---------- helpers ---------- */
 function oneline(s){ s=(s||'').replace(/\s+/g,' ').trim(); return s.length>70?s.slice(0,70)+'…':s; }
@@ -563,6 +626,38 @@ function buildPalette(){
   });
 }
 function hex(v){ return cssVar(v); }
+
+/* lightweight markdown -> HTML for the Document output */
+function mdToHtml(md){
+  const esc2=s=>esc(s);
+  const lines=(md||'').split('\n'); let out=[], i=0;
+  function inline(s){ return esc2(s).replace(/\*\*(.+?)\*\*/g,'<b>$1</b>').replace(/`(.+?)`/g,'<code>$1</code>'); }
+  while(i<lines.length){
+    let l=lines[i];
+    if(/^\s*\|.*\|\s*$/.test(l) && i+1<lines.length && /^\s*\|[\s:|-]+\|\s*$/.test(lines[i+1])){
+      const cells=r=>r.trim().replace(/^\||\|$/g,'').split('|').map(c=>c.trim());
+      const head=cells(l); i+=2; let body=[];
+      while(i<lines.length && /^\s*\|.*\|\s*$/.test(lines[i])){ body.push(cells(lines[i])); i++; }
+      out.push('<table class="doc-tbl"><tr>'+head.map(h=>`<th>${inline(h)}</th>`).join('')+'</tr>'+
+        body.map(row=>'<tr>'+row.map(c=>`<td>${inline(c)}</td>`).join('')+'</tr>').join('')+'</table>');
+      continue;
+    }
+    const h=l.match(/^(#{1,4})\s+(.*)$/);
+    if(h){ out.push(`<h${h[1].length}>${inline(h[2])}</h${h[1].length}>`); i++; continue; }
+    if(/^\s*[-*]\s+/.test(l)){ let items=[]; while(i<lines.length && /^\s*[-*]\s+/.test(lines[i])){ items.push('<li>'+inline(lines[i].replace(/^\s*[-*]\s+/,''))+'</li>'); i++; } out.push('<ul>'+items.join('')+'</ul>'); continue; }
+    if(/^\s*\d+\.\s+/.test(l)){ let items=[]; while(i<lines.length && /^\s*\d+\.\s+/.test(lines[i])){ items.push('<li>'+inline(lines[i].replace(/^\s*\d+\.\s+/,''))+'</li>'); i++; } out.push('<ol>'+items.join('')+'</ol>'); continue; }
+    if(l.trim()==='---'){ out.push('<hr/>'); i++; continue; }
+    if(l.trim()===''){ i++; continue; }
+    out.push('<p>'+inline(l)+'</p>'); i++;
+  }
+  return out.join('');
+}
+function downloadDoc(nodeId){
+  const r=state.results[nodeId]; if(!r||!r.output)return;
+  const blob=new Blob([r.output.value||''],{type:'text/markdown'});
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
+  a.download=((r.output.title||'document').replace(/\s+/g,'-').toLowerCase())+'.md'; a.click();
+}
 
 /* drop onto canvas */
 const wrap=document.getElementById('canvasWrap');
@@ -702,6 +797,13 @@ function renderResult(node,r){
     const calls=(o.steps||[]).filter(s=>s.type==='tool_call').length;
     if(r.status==='done') html+=`<div class="res-meta">${o.tokens||r.tokens||'?'} tokens · ${r.ms}ms · ${calls} tool call${calls===1?'':'s'}</div>`;
     return html;
+  }
+  if(o.kind==='document'){
+    return `<div class="doc-card">${mdToHtml(o.value||'')}</div>`+
+      `<button class="doc-dl" onclick="downloadDoc('${node.id}')">⤓ Download .md</button>`;
+  }
+  if(o.kind==='json'){
+    return '<pre class="json-out">'+esc(JSON.stringify(o.value,null,2))+'</pre>';
   }
   if(o.kind==='rows'){
     const cols=o.columns||Object.keys(o.rows[0]||{});
