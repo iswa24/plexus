@@ -50,6 +50,14 @@ class Settings(BaseSettings):
     trino_catalog: str = "hive"
     trino_scheme: str = "https"
 
+    # --- MCP (Model Context Protocol) ---
+    # Servers are an ADMIN ALLOW-LIST (governance): only listed servers can be
+    # reached, and only their listed tools. Set via PLEXUS_MCP_SERVERS as a JSON
+    # object {serverId: {transport: "stdio"|"sse", command|url, args, allowed_tools}}.
+    # A built-in "demo" server always exists so MCP cards run with no dependency.
+    mcp_enabled: bool = True
+    mcp_servers: dict = {}
+
 
 @lru_cache
 def get_settings() -> Settings:

@@ -28,6 +28,7 @@ from .connectors.bedrock import run_bedrock
 from .connectors.classify import run_classify
 from .connectors.cypher import run_cypher
 from .connectors.detection import run_detection
+from .connectors.mcp import run_mcp_resource, run_mcp_tool
 from .connectors.prompt_agent import run_prompt
 from .connectors.rag import run_rag
 from .connectors.neo4j import run_neo4j
@@ -165,6 +166,10 @@ async def run_node(node: Node, ctx: RunContext, emit: Emit) -> dict[str, Any]:
         return await run_prompt(cfg, ctx, emit)
     if t == "action.webhook":
         return await run_action(cfg, ctx, emit)
+    if t == "source.mcp":
+        return await run_mcp_resource(cfg, ctx, emit)
+    if t == "tool.mcp":
+        return await run_mcp_tool(cfg, ctx, emit)
     if t == "flow.branch":
         return await run_branch(cfg, ctx, emit)
     if t == "agent.call":

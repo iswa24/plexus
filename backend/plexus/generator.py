@@ -21,7 +21,7 @@ VALID_TYPES = {
     "source.trino", "source.neo4j", "source.http", "source.s3", "source.elastic",
     "model.bedrock", "model.agent", "model.nl2sql", "model.cypher",
     "model.classify", "model.detection", "model.rag", "model.prompt",
-    "action.webhook",
+    "action.webhook", "source.mcp", "tool.mcp",
     "flow.branch", "agent.call", "flow.foreach",
     "output.text", "output.table", "output.document", "output.json",
 }

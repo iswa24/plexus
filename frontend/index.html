@@ -582,6 +582,20 @@ const TYPES = {
     summary:n=>'🔎 '+(n.config.index||'')+'\n'+oneline(n.config.query||'match_all'),
     badge:'SIEM logs',
   },
+  'source.mcp': {
+    cat:'Source', name:'MCP Resource / Tool', icon:'🔌', color:'#0ea5e9',
+    defaults:{serverId:'demo', mode:'tool', tool:'search_iocs', args:'{"query":"@{question}"}', resourceUri:'', maxRows:200},
+    fields:[
+      {k:'serverId', t:'mcpsel', label:'MCP server (admin allow-list)'},
+      {k:'mode', t:'select', label:'Mode', options:['tool','resource']},
+      {k:'tool', t:'text', label:'Tool name (when mode=tool)'},
+      {k:'args', t:'textarea', code:true, refs:true, label:'Tool args (JSON; type @ to reference cards)'},
+      {k:'resourceUri', t:'text', refs:true, label:'Resource URI (when mode=resource)'},
+      {k:'maxRows', t:'number', label:'Max rows'},
+    ],
+    summary:n=>'🔌 '+(mcpServerName(n.config.serverId)||n.config.serverId||'demo')+' · '+(n.config.mode==='resource'?(n.config.resourceUri||'resource'):(n.config.tool||'tool')),
+    badge:'MCP · read',
+  },
   'model.bedrock': {
     cat:'Sub-agents', name:'Bedrock LLM', icon:'✦', color:'var(--purple)',
     defaults:{
@@ -731,6 +745,19 @@ const TYPES = {
     summary:n=>'⚡ '+(n.config.action||'action')+(((n.config.approved||[]).includes&&(n.config.approved||[]).includes('approved'))?' · approved':' · proposes only'),
     badge:'response · gated',
   },
+  'tool.mcp': {
+    cat:'Actions', name:'MCP Tool (invoke)', icon:'🔌', color:'#6366f1',
+    defaults:{serverId:'demo', tool:'search_iocs', args:'{"query":"@{question}"}', sideEffect:'read-only', approved:false},
+    fields:[
+      {k:'serverId', t:'mcpsel', label:'MCP server (admin allow-list)'},
+      {k:'tool', t:'text', label:'Tool name'},
+      {k:'args', t:'textarea', code:true, refs:true, label:'Tool args (JSON; type @ to reference cards)'},
+      {k:'sideEffect', t:'select', label:'Side effect', options:['read-only','write']},
+      {k:'approved', t:'checks', label:'Approval (required for write tools)', options:['approved']},
+    ],
+    summary:n=>'🔌 '+(mcpServerName(n.config.serverId)||n.config.serverId||'demo')+' · '+(n.config.tool||'tool')+(n.config.sideEffect==='write'?' · write (gated)':''),
+    badge:'MCP · tool',
+  },
   'flow.branch': {
     cat:'Orchestration', name:'Branch (if / else)', icon:'⑂', color:'#eab308',
     defaults:{ left:'@{triage}', op:'contains', right:'P1' },
@@ -797,6 +824,11 @@ const PALETTE_ORDER = ['Input','Source','Sub-agents','Orchestration','Actions','
 let _AGENTS=[];
 async function loadAgents(){ try{ _AGENTS=await apiJSON('/api/apps'); }catch(e){ _AGENTS=[]; } }
 function agentName(id){ const a=_AGENTS.find(x=>x.id===id); return a?(a.name||a.id):''; }
+
+/* MCP server allow-list (for the server picker on source.mcp / tool.mcp) */
+let _MCP_SERVERS=[];
+async function loadMcpServers(){ try{ _MCP_SERVERS=(await apiJSON('/api/mcp/servers')).servers||[]; }catch(e){ _MCP_SERVERS=[]; } }
+function mcpServerName(id){ const s=_MCP_SERVERS.find(x=>x.id===id); return s?(s.label||s.id):''; }
 
 /* ---------- helpers ---------- */
 function oneline(s){ s=(s||'').replace(/\s+/g,' ').trim(); return s.length>70?s.slice(0,70)+'…':s; }
@@ -1162,6 +1194,10 @@ function renderInspector(){
         .map(a=>`<option value="${esc(a.id)}" ${a.id===v?'selected':''}>${esc(a.name||a.id)}</option>`).join('');
       h+=`<select data-k="${f.k}"><option value="">— pick a registered agent —</option>${opts}</select>`;
       if(!_AGENTS.length) h+=`<div class="help">No saved agents yet — save some agents first, then they appear here.</div>`;
+    } else if(f.t==='mcpsel'){
+      const opts=_MCP_SERVERS.map(s=>`<option value="${esc(s.id)}" ${s.id===v?'selected':''}>${esc(s.label||s.id)}</option>`).join('');
+      h+=`<select data-k="${f.k}">${opts||'<option value="demo">Demo MCP server</option>'}</select>`;
+      const srv=_MCP_SERVERS.find(s=>s.id===v); if(srv&&srv.tools&&srv.tools.length) h+=`<div class="help">Tools: ${esc(srv.tools.join(', '))}</div>`;
     } else if(f.t==='checks'){
       const arr=Array.isArray(v)?v:[];
       h+=`<div class="checks">`+f.options.map(o=>`<label class="chk"><input type="checkbox" data-k="${f.k}" data-opt="${o}" ${arr.includes(o)?'checked':''}/> ${esc(o)}</label>`).join('')+`</div>`;
@@ -1521,7 +1557,7 @@ function setMode(m){
   document.getElementById('modeChat').classList.toggle('active',m==='chat');
   document.getElementById('modeBuild').classList.toggle('active',m==='builder');
   if(m==='chat'){ ensureChatWelcome(); setTimeout(()=>{const t=document.getElementById('csPrompt');if(t)t.focus();},60); }
-  if(m==='builder'){ loadAgents().then(()=>{ if(state.sel) renderInspector(); }); }
+  if(m==='builder'){ Promise.all([loadAgents(), loadMcpServers()]).then(()=>{ if(state.sel) renderInspector(); }); }
 }
 function ensureChatWelcome(){
   const col=document.getElementById('csCol');
@@ -1967,6 +2003,7 @@ async function refreshUsage(){
 function boot(){
   buildPalette();
   loadAgents();        // populate the agent picker for orchestration nodes
+  loadMcpServers();    // populate the MCP server picker for source.mcp / tool.mcp
   loadSample();        // a flow waits in the builder
   setMode('chat');     // consumers land in Chat; engineers toggle to 🛠 Builder
   refreshUsage(); setInterval(refreshUsage, 4000);

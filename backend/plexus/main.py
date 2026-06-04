@@ -39,6 +39,19 @@ def health():
     return {"ok": True, "demoMode": settings.demo_mode}
 
 
+@app.get("/api/mcp/servers")
+def mcp_servers():
+    """The MCP server allow-list (built-in demo + admin-registered) for the
+    builder's server picker. Read-only; secrets are never returned."""
+    from .connectors import mcp
+    out = []
+    for sid, s in mcp.servers(settings).items():
+        out.append({"id": sid, "label": s.get("label", sid),
+                    "transport": s.get("transport", "stdio"),
+                    "tools": s.get("tools", []), "resources": s.get("resources", [])})
+    return {"enabled": settings.mcp_enabled, "servers": out}
+
+
 @app.get("/api/usage")
 def usage():
     """Token usage, model cost, and cache savings (the response cache means an
