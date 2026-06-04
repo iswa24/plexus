@@ -81,7 +81,9 @@ class RunContext:
     def resolve(self, text: str, for_prompt: bool) -> str:
         def repl(m: re.Match) -> str:
             key = m.group(1).strip()
-            nid = self.ref_index.get(key)
+            # exact id/slug first, then a slugified fallback so a hand-typed/imported
+            # @{Question} or @{User question} resolves like the UI-inserted @{question}
+            nid = self.ref_index.get(key) or self.ref_index.get(_slug(key, ""))
             out = self.results.get(nid) if nid else None
             if not out:
                 return f"[{key}]"

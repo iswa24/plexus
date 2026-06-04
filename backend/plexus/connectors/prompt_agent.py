@@ -20,10 +20,15 @@ async def run_prompt(config: dict, ctx, emit: Emit) -> dict[str, Any]:
                                "provider": provider, "model": model}})
 
     await push()
-    if not llm.available(config, ctx):
+    if llm.use_demo(config, ctx):
         v = "(demo) Configure a model provider (Bedrock / Claude Code / Anthropic)."
         await push(v)
         return {"kind": "agent", "steps": steps, "value": v, "provider": "demo", "model": "(none)"}
-    v = await llm.complete(task, system, config, ctx)
+    try:
+        v = await llm.complete(task, system, config, ctx)
+    except Exception as exc:  # surface the failure instead of an empty answer
+        v = f"⚠ model provider error: {exc}"
+    if not v:
+        v = "⚠ no response from the model provider."
     await push(v)
     return {"kind": "agent", "steps": steps, "value": v, "provider": provider, "model": model}

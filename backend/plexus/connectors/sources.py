@@ -41,18 +41,26 @@ _DEMO_ELASTIC = {
 
 
 async def run_http(config: dict, ctx, emit: Emit) -> dict[str, Any]:
+    max_rows = int(config.get("maxRows", 200))
     if ctx.settings.demo_mode:
-        return {"kind": "rows", **_DEMO_HTTP}
+        return {"kind": "rows", "columns": _DEMO_HTTP["columns"], "rows": _DEMO_HTTP["rows"][:max_rows]}
+    import asyncio
     import json
     import urllib.request
     url = ctx.resolve(config.get("url", ""), for_prompt=False)
-    req = urllib.request.Request(url, headers={"Accept": "application/json"})
-    import asyncio
+    method = (config.get("method") or "GET").upper()
+    headers = {"Accept": "application/json"}
+    payload = None
+    if method == "POST":
+        body = ctx.resolve(config.get("body", "") or "", for_prompt=False)
+        payload = (body or "{}").encode()
+        headers["Content-Type"] = "application/json"
+    req = urllib.request.Request(url, data=payload, headers=headers, method=method)
     data = await asyncio.to_thread(lambda: json.loads(urllib.request.urlopen(req, timeout=20).read().decode()))
     rows = data if isinstance(data, list) else data.get("results") or data.get("data") or [data]
     rows = [r if isinstance(r, dict) else {"value": r} for r in rows]
     cols = list(rows[0].keys()) if rows else []
-    return {"kind": "rows", "columns": cols, "rows": rows[: int(config.get("maxRows", 200))]}
+    return {"kind": "rows", "columns": cols, "rows": rows[:max_rows]}
 
 
 async def run_s3(config: dict, ctx, emit: Emit) -> dict[str, Any]:

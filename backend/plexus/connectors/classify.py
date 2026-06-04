@@ -19,7 +19,7 @@ async def run_classify(config: dict, ctx, emit: Emit) -> dict[str, Any]:
         await emit({"output": {"kind": "agent", "steps": list(steps), "value": value,
                                "provider": provider, "model": model}})
 
-    if not llm.available(config, ctx):
+    if llm.use_demo(config, ctx):
         steps.append({"type": "think", "text": "No model provider — demo classification."})
         v = f"(demo) Would classify into one of: {categories}. Configure a model provider for real triage."
         await push(v)

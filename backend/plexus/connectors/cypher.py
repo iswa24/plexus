@@ -42,7 +42,7 @@ async def run_cypher(config: dict, ctx, emit: Emit) -> dict[str, Any]:
         await emit({"output": {"kind": "agent", "steps": list(steps), "value": value,
                                "provider": provider, "model": model}})
 
-    if not llm.available(config, ctx):
+    if llm.use_demo(config, ctx):
         cy = "MATCH (i:Incident)-[r]-(e) RETURN e LIMIT 25"
         steps.append({"type": "think", "text": "No model provider — demo Cypher."})
         steps.append({"type": "tool_call", "tool": "run_cypher", "input": cy})

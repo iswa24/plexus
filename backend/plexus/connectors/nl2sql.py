@@ -179,6 +179,9 @@ async def run_nl2sql(config: dict, ctx, emit: Emit) -> dict[str, Any]:
 
     backend = get_backend(config, ctx.settings, ctx.principal)
     try:
+        # demo mode is a hard contract: canned output, no external/billed model calls
+        if ctx.settings.demo_mode:
+            return await _demo(backend, steps, answer, tables, push)
         scoped = await _scope_tables(backend, question, config, ctx, steps, push)
         schema = backend.schema_text(only=scoped)
         key = ctx.settings.anthropic_api_key

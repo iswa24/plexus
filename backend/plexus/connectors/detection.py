@@ -29,7 +29,7 @@ async def run_detection(config: dict, ctx, emit: Emit) -> dict[str, Any]:
         await emit({"output": {"kind": "agent", "steps": list(steps), "value": value,
                                "provider": provider, "model": model}})
 
-    if not llm.available(config, ctx):
+    if llm.use_demo(config, ctx):
         steps.append({"type": "think", "text": "No model provider — demo rule."})
         steps.append({"type": "tool_call", "tool": f"{target} rule", "input": _DEMO_RULE})
         await push(_DEMO_RULE)

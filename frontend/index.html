@@ -613,7 +613,7 @@ const TYPES = {
       system:'You are a security analyst agent. Use the tools to gather evidence, then give a concise risk summary with recommended actions.',
       goal:'@{question}',
       tools:['trino','neo4j'],
-      catalog:'hive', schema:'security',
+      catalog:'hive', schema:'security', maxRows:100,
       maxSteps:5, temperature:0.2, maxTokens:1500},
     fields:[
       {k:'modelId', t:'select', label:'Model', options:[
@@ -626,8 +626,12 @@ const TYPES = {
       {k:'goal', t:'textarea', refs:true, label:'Goal / task (type @ to reference cards)'},
       {k:'tools', t:'checks', label:'Tools the agent may call', options:['trino','neo4j']},
       {k:'system', t:'textarea', label:'System prompt'},
+      {k:'catalog', t:'text', label:'Warehouse catalog (for the trino tool)'},
+      {k:'schema', t:'text', label:'Warehouse schema (for the trino tool)'},
+      {k:'maxRows', t:'number', label:'Max rows per tool query'},
       {k:'maxSteps', t:'number', label:'Max reasoning steps'},
       {k:'temperature', t:'number', label:'Temperature', step:0.1},
+      {k:'maxTokens', t:'number', label:'Max output tokens'},
     ],
     summary:n=>'🤖 agent · tools: '+((n.config.tools||[]).join(', ')||'none')+'\n'+oneline(n.config.goal),
     badge:'tool-use loop',

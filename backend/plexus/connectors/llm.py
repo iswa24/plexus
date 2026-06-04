@@ -41,6 +41,14 @@ def available(config, ctx) -> bool:
     return bool(ctx.settings.anthropic_api_key)
 
 
+def use_demo(config, ctx) -> bool:
+    """True when a connector should return canned demo output instead of calling a
+    live model. Demo mode is a hard contract — zero credentials, no external or
+    billed calls — so it short-circuits even when a provider happens to be present.
+    Also true when no provider is available at all."""
+    return bool(getattr(ctx.settings, "demo_mode", False)) or not available(config, ctx)
+
+
 async def _bedrock_complete(prompt, system, model, settings) -> str:
     from .. import cache  # local import to avoid cycles
 

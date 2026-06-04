@@ -30,7 +30,7 @@ async def run_rag(config: dict, ctx, emit: Emit) -> dict[str, Any]:
         v = "I couldn't find anything relevant in the knowledge base for that question."
         await push(v)
         return {"kind": "agent", "steps": steps, "value": v, "provider": provider, "model": model, "tables": cites}
-    if not llm.available(config, ctx):
+    if llm.use_demo(config, ctx):
         v = "(demo) Retrieved: " + ", ".join(cites) + ". Configure a model provider for grounded answers."
         await push(v)
         return {"kind": "agent", "steps": steps, "value": v, "provider": "demo", "model": "(none)", "tables": cites}
@@ -39,6 +39,11 @@ async def run_rag(config: dict, ctx, emit: Emit) -> dict[str, Any]:
     system = ("You are a security knowledge assistant. Answer ONLY from the provided context. "
               "Cite sources inline like [doc#n]. If the answer is not in the context, say so.")
     prompt = f"Context:\n{context}\n\nQuestion: {question}\n\nAnswer concisely, with citations."
-    v = await llm.complete(prompt, system, config, ctx)
+    try:
+        v = await llm.complete(prompt, system, config, ctx)
+    except Exception as exc:  # surface the failure instead of an empty answer
+        v = f"⚠ model provider error: {exc}"
+    if not v:
+        v = "⚠ no response from the model provider."
     await push(v)
     return {"kind": "agent", "steps": steps, "value": v, "provider": provider, "model": model, "tables": cites}
