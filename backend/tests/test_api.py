@@ -83,3 +83,21 @@ def test_generate_picks_agent_for_autonomous_phrasing():
 
 def test_generate_requires_prompt():
     assert client.post("/api/generate", json={"prompt": "  "}).status_code == 400
+
+
+def test_cache_answer_roundtrip_makes_next_ask_free():
+    """A client-streamed run stored via /api/cache/answer must make the next
+    (reworded) /api/ask a $0 cache hit — no router or model call."""
+    app = {"name": "X", "nodes": [{"id": "o", "type": "output.text",
+           "config": {"template": "hi"}}], "edges": []}
+    r = client.post("/api/cache/answer", json={
+        "prompt": "how many open P1 incidents by business unit",
+        "app": app, "results": {"o": {"kind": "text", "value": "42"}},
+        "answer": "42", "cost": 0.01})
+    assert r.json()["ok"] is True
+    # reworded ask, run deferred — still a free semantic hit before any routing
+    r2 = client.post("/api/ask", json={
+        "prompt": "show open P1 incidents per BU", "run": False}).json()
+    assert r2["cached"] == "semantic"
+    assert r2["run_cost"] == 0.0
+    assert r2["answer"] == "42"

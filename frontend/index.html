@@ -1554,21 +1554,14 @@ async function chatModeSend(){
   const bot=csBubble('bot','<span class="typing">▍</span>');
   const u0=await usageSnap();
   try{
-    // single cache-first call: a hit renders the stored answer with NO model spend
-    const r=await apiJSON('/api/ask',{method:'POST',body:JSON.stringify({prompt:text})});
-    if(r.match){
-      const app=r.app;
-      const outNode=(app.nodes||[]).find(n=>n.type.startsWith('output'));
-      const res=(r.results&&outNode)?r.results[outNode.id]:null;
-      const agentNode=(app.nodes||[]).find(n=>n.type.startsWith('model.')||n.type.startsWith('action.'));
-      const ares=(r.results&&agentNode)?r.results[agentNode.id]:null;
-      const usedModel=(ares&&ares.model)?ares.model:'';
-      const free=!!r.cached;
-      bot.innerHTML=`<div class="cs-via">${free?'♻':'▷'} via ${esc(genericNameForNodes(app.nodes))} <span class="cs-method">${esc(methodLabel(agentNode))}</span>`+
-        (usedModel?` · <span class="cs-model">${esc(usedModel)}</span>`:'')+
-        (free?` · <span class="cs-cachetag">cached · $0 spent</span>`:'')+`</div>`+
-        renderChatHow(app, ares, agentNode)+renderChatOutput(res, r.answer);
-    } else {
+    // cache-first, but DEFER the run: a hit renders free; a miss returns the routed
+    // agent so we stream its run over /ws/run (no blocking, works for long flows).
+    const r=await apiJSON('/api/ask',{method:'POST',body:JSON.stringify({prompt:text, run:false})});
+    if(r.cached){            // free semantic cache hit — render stored answer, $0
+      renderChatAnswer(bot, r.app, r.results, r.answer, true);
+    } else if(r.match){      // routed to an agent → stream the run live
+      await csStreamRun(bot, r.app, text, u0);
+    } else {                 // no agent fits → offer to build it
       csPending=text;
       bot.innerHTML=`<div class="cs-needs">🛠 I don't have an agent for this yet — it needs to be built.</div>`+
         `<button class="btn" onclick="switchToBuilder()">Build this in Builder →</button>`;
@@ -1577,6 +1570,61 @@ async function chatModeSend(){
   appendCostLine(bot, u0, await usageSnap());
   refreshUsage();
   document.getElementById('csTranscript').scrollTop=1e9;
+}
+
+/* render a finished answer (cached or freshly run) into a chat bubble */
+function renderChatAnswer(bot, app, results, answer, free){
+  const outNode=(app.nodes||[]).find(n=>n.type.startsWith('output'));
+  const res=(results&&outNode)?results[outNode.id]:null;
+  const agentNode=(app.nodes||[]).find(n=>n.type.startsWith('model.')||n.type.startsWith('action.')||n.type==='agent.call'||n.type==='flow.foreach');
+  const ares=(results&&agentNode)?results[agentNode.id]:null;
+  const usedModel=(ares&&ares.model)?ares.model:'';
+  bot.innerHTML=`<div class="cs-via">${free?'♻':'▷'} via ${esc(genericNameForNodes(app.nodes))} <span class="cs-method">${esc(methodLabel(agentNode))}</span>`+
+    (usedModel?` · <span class="cs-model">${esc(usedModel)}</span>`:'')+
+    (free?` · <span class="cs-cachetag">cached · $0 spent</span>`:'')+`</div>`+
+    renderChatHow(app, ares, agentNode)+renderChatOutput(res, answer);
+}
+
+/* stream an agent run over /ws/run: live per-node progress, then render + cache.
+   This is what makes long multi-agent orchestrations work in chat (no HTTP timeout). */
+function csStreamRun(bot, app, text, u0){
+  return new Promise(resolve=>{
+    const proto=location.protocol==='https:'?'wss':'ws';
+    const results={}; let running=null, ws;
+    const nodesSorted=(app.nodes||[]).slice().sort((a,b)=>((a.position&&a.position.x)||a.x||0)-((b.position&&b.position.x)||b.x||0));
+    const stepLabel=n=>((n.type==='agent.call'||n.type==='flow.foreach')?(agentName(n.config.agentId)||TYPES[n.type].name):(TYPES[n.type]||{name:n.type}).name);
+    function paint(){
+      const rows=nodesSorted.map(n=>{
+        const st=results[n.id]?'done':(running===n.id?'run':'wait');
+        const ico=st==='done'?'✓':(st==='run'?'<span class="typing">▍</span>':'·');
+        const col=st==='done'?'var(--ok,#22c55e)':(st==='run'?'#c7b3ff':'#5b667d');
+        return `<div style="display:flex;gap:8px;align-items:center;color:${col};padding:2px 0">${ico} <span>${esc(stepLabel(n))}</span></div>`;
+      }).join('');
+      bot.innerHTML=`<div class="cs-via">▷ running <b>${esc(genericNameForNodes(app.nodes))}</b> — streaming…</div><div class="cs-howbox" style="padding:6px 0">${rows}</div>`;
+      document.getElementById('csTranscript').scrollTop=1e9;
+    }
+    try{ ws=new WebSocket(`${proto}://${location.host}/ws/run`); }
+    catch(e){ bot.innerHTML='⚠ cannot reach backend (/ws/run)'; return resolve(); }
+    ws.onopen=()=>{ const inp=(app.nodes||[]).find(n=>n.type.startsWith('input')); ws.send(JSON.stringify({app, inputs: inp?{[inp.id]:text}:{}})); paint(); };
+    ws.onmessage=async ev=>{
+      let f; try{ f=JSON.parse(ev.data); }catch(_){ return; }
+      if(f.event==='node'){
+        if(f.status==='running') running=f.nodeId;
+        if(f.status==='done'&&f.output) results[f.nodeId]=f.output;
+        paint();
+      } else if(f.event==='run_complete'){
+        ws.close();
+        const outNode=(app.nodes||[]).find(n=>n.type.startsWith('output'));
+        let answer=(outNode&&results[outNode.id]&&results[outNode.id].value)||'';
+        if(!answer){ for(const n of (app.nodes||[])){ const o=results[n.id]; if(o&&o.value){ answer=o.value; } } }
+        renderChatAnswer(bot, app, results, answer, false);
+        const u1=await usageSnap(); const cost=(u1&&u0)?Math.max(0,(u1.cost_usd||0)-(u0.cost_usd||0)):0;
+        try{ await apiJSON('/api/cache/answer',{method:'POST',body:JSON.stringify({prompt:text, app, results, answer, cost})}); }catch(_){}
+        resolve();
+      } else if(f.event==='error'){ ws.close(); bot.innerHTML='⚠ '+esc(f.error||'run error'); resolve(); }
+    };
+    ws.onerror=()=>{ bot.innerHTML='⚠ cannot reach backend (/ws/run)'; resolve(); };
+  });
 }
 function switchToBuilder(){
   const q=csPending; setMode('builder');
@@ -1604,6 +1652,9 @@ function renderChatHow(app, ares, agentNode){
       else if(s.type==='router') steps+=`<div class="ag-step ag-route">🧭 router → ${esc(s.tier)} · ${esc(s.reason)}</div>`;
       else if(s.type==='tool_call') steps+=`<div class="ag-step ag-call">🔧 <b>${esc(s.tool)}</b><div class="ag-code">${esc(s.input)}</div></div>`;
       else if(s.type==='tool_result') steps+=`<div class="ag-step ag-res">↳ ${esc(s.summary)}</div>`;
+      else if(s.type==='delegate') steps+=`<div class="ag-step ag-route">♻ reused agent → <b>${esc(s.agent)}</b></div>`;
+      else if(s.type==='map') steps+=`<div class="ag-step ag-route">🔁 mapped <b>${esc(s.agent)}</b> × ${esc(s.count)}</div>`;
+      else if(s.type==='branch') steps+=`<div class="ag-step ag-route">⑂ ${esc(s.text)}</div>`;
     });
     if(ares.model) steps+=`<div class="ag-step ag-model">⚙ model: <b>${esc(ares.model)}</b> · ${esc(ares.provider||'')}</div>`;
   }

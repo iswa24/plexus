@@ -202,10 +202,15 @@ async def route_question(body: dict):
 
 @app.post("/api/ask")
 async def ask(body: dict, request: Request):
-    """Consumer entry — FREE cache-first, then route + run. A cache hit renders the
+    """Consumer entry — FREE cache-first, then route (+ run). A cache hit renders the
     stored answer with ZERO model calls (so a repeated/reworded question costs $0).
-    On miss: route to an agent, run it (passing the question as input), and cache."""
+
+    With body {"run": false} this returns the routed agent WITHOUT executing it, so
+    the client can stream the run over /ws/run (right for long multi-agent
+    orchestrations that would otherwise block one HTTP request) and then POST the
+    result to /api/cache/answer. Default run=true keeps the blocking behavior."""
     prompt = (body or {}).get("prompt", "").strip()
+    do_run = (body or {}).get("run", True)
     if not prompt:
         raise HTTPException(status_code=400, detail="prompt is required")
     principal = principal_from_headers({k.lower(): v for k, v in request.headers.items()})
@@ -221,6 +226,10 @@ async def ask(body: dict, request: Request):
     if not routed.get("match"):
         return {"match": False, "reason": routed.get("reason", "")}
     stored = registry.get(routed["appId"])
+    if not do_run:  # defer execution to the streaming client
+        return {"match": True, "cached": False, "deferred": True,
+                "appId": routed["appId"], "app": stored}
+
     app_def = AppDef(**stored)
     inp = next((n for n in app_def.nodes if n.type.startswith("input")), None)
     inputs = {inp.id: prompt} if inp else {}
@@ -230,6 +239,22 @@ async def ask(body: dict, request: Request):
     cache.answer_put(key, {"app": stored, "results": results, "answer": answer}, run_cost)
     return {"match": True, "cached": False, "run_cost": run_cost,
             "app": stored, "results": results, "answer": answer}
+
+
+@app.post("/api/cache/answer")
+async def cache_answer(body: dict):
+    """Store a client-streamed run in the free answer cache, so the next identical/
+    reworded question is a $0 cache hit. Used by chat after a /ws/run stream."""
+    prompt = (body or {}).get("prompt", "").strip()
+    if not prompt:
+        raise HTTPException(status_code=400, detail="prompt is required")
+    key = cache.cheap_key(prompt)
+    if not key:
+        return {"ok": False}
+    cache.answer_put(key, {"app": body.get("app"), "results": body.get("results") or {},
+                           "answer": body.get("answer") or ""},
+                     float(body.get("cost") or 0.0))
+    return {"ok": True}
 
 
 # ---------------------------------------------------------------- generate
