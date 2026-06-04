@@ -116,3 +116,18 @@ def test_agent_loop_uses_mcp_tool_in_demo():
         {"goal": "@{i}", "tools": [], "mcpServers": ["demo"]}, ctx, _noop))
     tool_calls = [s for s in out["steps"] if s.get("type") == "tool_call"]
     assert any(s["tool"].startswith("mcp_demo_") for s in tool_calls)
+
+
+def test_multi_server_least_privilege_scoping():
+    """An agent only sees tools from the servers it was granted (hermetic: inject
+    a two-server registry rather than relying on .env)."""
+    import types as _t
+    stub = _t.SimpleNamespace(mcp_servers={
+        "secintel": {"tools": ["search_iocs", "block_ip"]},
+        "geoip": {"tools": ["geolocate_ip", "whois_domain"]},
+    })
+    only_geo = [s["toolSpec"]["name"] for s in mcp.agent_tool_specs(["geoip"], stub)]
+    assert only_geo == ["mcp_geoip_geolocate_ip", "mcp_geoip_whois_domain"]
+    assert "mcp_secintel_search_iocs" not in only_geo          # not granted -> not visible
+    both = [s["toolSpec"]["name"] for s in mcp.agent_tool_specs(["secintel", "geoip"], stub)]
+    assert len(both) == 4 and "mcp_secintel_block_ip" in both and "mcp_geoip_whois_domain" in both
