@@ -20,7 +20,9 @@ VALID_TYPES = {
     "input.text", "input.dropdown",
     "source.trino", "source.neo4j", "source.http", "source.s3", "source.elastic",
     "model.bedrock", "model.agent", "model.nl2sql", "model.cypher",
-    "model.classify", "model.detection",
+    "model.classify", "model.detection", "model.rag", "model.prompt",
+    "action.webhook",
+    "flow.branch", "agent.call", "flow.foreach",
     "output.text", "output.table", "output.document", "output.json",
 }
 
@@ -50,12 +52,111 @@ Rules:
 
 
 async def generate_app(prompt: str, settings: Settings) -> dict:
+    # Reuse-first at BUILD time: if existing registered agents cover the stages of
+    # this goal, compose them into an orchestration instead of rebuilding from
+    # scratch. Only fall back to single-agent generation when nothing fits.
+    orch = await _orchestrate(prompt, settings)
+    if orch is not None:
+        return _normalize(orch, prompt)
     raw = None
     if not settings.demo_mode:
         raw = await _llm_generate(prompt, settings)
     if raw is None:
         raw = _heuristic(prompt)
     return _normalize(raw, prompt)
+
+
+# ---------------------------------------------------------------- reuse-first orchestration
+def _agent_capability(a: dict) -> str:
+    if a.get("description"):
+        return a["description"]
+    types = [n.get("type", "") for n in a.get("nodes", [])]
+    kinds = sorted({t.split(".")[-1] for t in types if t.startswith(("model", "action"))})
+    return ("does: " + ", ".join(kinds)) if kinds else "agent"
+
+
+_DECOMPOSE_SYS = (
+    "You compose Plexus flows by REUSING existing agents. Given a user goal and a "
+    "catalog of existing agents, break the goal into 1-5 ordered stages and pick, for "
+    "each stage, the single existing agent that performs it (by id) — or \"\" if none "
+    "fits. Mark a stage foreach:true when it runs once PER ROW/item of the previous "
+    "stage's output (e.g. 'for each incident, ...'). Reuse agents wherever they fit.\n"
+    'Output ONLY JSON: {"name":"<short flow name>","stages":[{"task":"<what it does>",'
+    '"agentId":"<existing id or empty>","foreach":false}]}'
+)
+
+
+async def _orchestrate(prompt: str, settings: Settings) -> dict | None:
+    """Decompose the goal and map each stage to an existing agent. Returns an
+    orchestration AppDef if at least one stage reuses a registered agent; else None."""
+    try:
+        from .registry import Registry
+        from .connectors import llm
+
+        agents = Registry(settings.db_path).list()
+        if not agents:
+            return None
+        by_id = {a["id"]: a for a in agents}
+        catalog = "\n".join(
+            f'- id="{a["id"]}" name="{a.get("name","")}" capability="{_agent_capability(a)}"'
+            for a in agents)
+        ask = (f'User goal: "{prompt}"\n\nExisting agents:\n{catalog}\n\n'
+               "Decompose the goal into ordered stages, reusing these agents by id where they fit.")
+
+        ctx = type("Ctx", (), {"settings": settings})()
+        out = await llm.complete(ask, _DECOMPOSE_SYS, {}, ctx)
+        if not out:
+            return None
+        plan = _extract_json(out) or {}
+        stages = plan.get("stages") or []
+        if not stages:
+            return None
+        # require at least one genuine reuse, else let the single-agent generator handle it
+        if not any((s.get("agentId") in by_id) for s in stages):
+            return None
+        name = plan.get("name") or _title(prompt)
+        return _build_orchestration(name, stages, prompt, by_id)
+    except Exception:
+        return None
+
+
+def _build_orchestration(name: str, stages: list, prompt: str, by_id: dict) -> dict:
+    nodes: list[dict] = []
+    edges: list[dict] = []
+
+    def add(t, label, cfg):
+        nid = t.split(".")[-1] + "_" + str(len(nodes))
+        c = dict(cfg)
+        c.setdefault("label", label)
+        nodes.append({"id": nid, "type": t, "label": label, "config": c})
+        return nid
+
+    def link(a, b, label=""):
+        edges.append({"id": "e" + str(len(edges)), "source": a, "target": b, "label": label})
+
+    prev = add("input.text", "Question", {"placeholder": "Ask…", "value": (prompt or "").strip()[:140]})
+    for st in stages:
+        aid = st.get("agentId") or ""
+        agent = by_id.get(aid)
+        task = (st.get("task") or "Process the input.")[:300]
+        if st.get("foreach") and agent:
+            nid = add("flow.foreach", f"For each → {agent.get('name','agent')}",
+                      {"agentId": aid, "items": f"@{{{prev}}}", "itemField": ""})
+        elif agent:
+            nid = add("agent.call", agent.get("name", "Sub-agent"),
+                      {"agentId": aid, "input": f"@{{{prev}}}"})
+        else:  # gap: no existing agent fits → build a small prompt step inline
+            nid = add("model.prompt", "Step",
+                      {"provider": "claudecode", "modelId": "auto",
+                       "system": "You are a senior security analyst. " + task,
+                       "goal": f"@{{{prev}}}"})
+        link(prev, nid)
+        prev = nid
+
+    out = add("output.document", "Report",
+              {"title": name, "template": "# @{title}\n\n@{" + prev + "}"})
+    link(prev, out)
+    return {"name": name, "nodes": nodes, "edges": edges}
 
 
 # ---------------------------------------------------------------- live (Bedrock)
@@ -218,7 +319,8 @@ def _normalize(raw: dict, prompt: str) -> dict:
     edges = []
     for i, e in enumerate(raw.get("edges", [])):
         if e.get("source") in ids and e.get("target") in ids:
-            edges.append({"id": e.get("id") or f"e{i}", "source": e["source"], "target": e["target"]})
+            edges.append({"id": e.get("id") or f"e{i}", "source": e["source"],
+                          "target": e["target"], "label": e.get("label", "")})
 
     pos = _layout(nodes, edges)
     for n in nodes:

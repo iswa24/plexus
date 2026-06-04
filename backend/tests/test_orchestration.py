@@ -179,3 +179,63 @@ def test_foreach_maps_agent_over_rows():
     assert len(out["rows"]) == 2
     assert out["rows"][0]["result"] == "echo:alpha"
     assert out["rows"][1]["result"] == "echo:beta"
+
+
+# ---------------------------------------------------------------- generator: reuse-first
+def test_build_orchestration_reuses_agents_and_maps():
+    """A decomposition plan that names existing agents must produce agent.call /
+    flow.foreach nodes that reference them — not rebuilt model.* nodes."""
+    from plexus.generator import _build_orchestration
+    by_id = {"app_sql": {"name": "P1 by BU"}, "app_play": {"name": "IR Playbook"}}
+    stages = [
+        {"task": "look up open incidents by BU", "agentId": "app_sql", "foreach": False},
+        {"task": "remediation per incident", "agentId": "app_play", "foreach": True},
+    ]
+    flow = _build_orchestration("Triage Flow", stages, "for each open incident...", by_id)
+    types = [n["type"] for n in flow["nodes"]]
+    assert "input.text" in types
+    assert "agent.call" in types and "flow.foreach" in types
+    assert "output.document" in types
+    # the agent.call references the existing agent, not a freshly built model node
+    call = next(n for n in flow["nodes"] if n["type"] == "agent.call")
+    assert call["config"]["agentId"] == "app_sql"
+    loop = next(n for n in flow["nodes"] if n["type"] == "flow.foreach")
+    assert loop["config"]["agentId"] == "app_play"
+    assert "model.nl2sql" not in types  # did NOT rebuild the data agent
+
+
+def test_orchestrate_prefers_existing_agents_over_rebuilding(monkeypatch):
+    """End-to-end of the reuse path with a mocked decomposition LLM."""
+    import plexus.connectors.llm as llmmod
+    from plexus import generator
+
+    reg = Registry(settings.db_path)
+    sql_id = reg.upsert(AppDef(name="P1 by BU", description="incidents by business unit",
+                               nodes=[{"id": "i", "type": "input.text", "config": {}}], edges=[]))["id"]
+    play_id = reg.upsert(AppDef(name="IR Playbook", description="remediation steps",
+                                nodes=[{"id": "i", "type": "input.text", "config": {}}], edges=[]))["id"]
+
+    plan = ('{"name":"Incident Triage","stages":['
+            f'{{"task":"incidents by BU","agentId":"{sql_id}","foreach":false}},'
+            f'{{"task":"remediation","agentId":"{play_id}","foreach":true}}]}}')
+
+    async def fake_complete(prompt, system, config, ctx):
+        return plan
+
+    monkeypatch.setattr(llmmod, "complete", fake_complete)
+    flow = _await(generator._orchestrate("for each open incident draft remediation", settings))
+    assert flow is not None
+    ids = [n["config"].get("agentId") for n in flow["nodes"] if n["type"] in ("agent.call", "flow.foreach")]
+    assert sql_id in ids and play_id in ids   # both existing agents reused
+
+
+def test_orchestrate_returns_none_when_no_agent_fits(monkeypatch):
+    import plexus.connectors.llm as llmmod
+    from plexus import generator
+
+    async def fake_complete(prompt, system, config, ctx):
+        return '{"name":"x","stages":[{"task":"do thing","agentId":"","foreach":false}]}'
+
+    monkeypatch.setattr(llmmod, "complete", fake_complete)
+    # no reuse → let the single-agent generator handle it
+    assert _await(generator._orchestrate("totally novel request", settings)) is None
