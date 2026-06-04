@@ -150,6 +150,51 @@ async def run_mcp_tool(config: dict, ctx, emit: Emit) -> dict[str, Any]:
     return await push(val)
 
 
+# ---------------------------------------------------------------- model.agent integration
+def agent_tool_specs(server_ids, settings) -> list[dict]:
+    """Bedrock Converse toolSpecs for every tool on the agent's allowed MCP servers
+    (least-privilege: only the servers the author ticked). Named mcp_<server>_<tool>."""
+    reg = servers(settings)
+    specs: list[dict] = []
+    for sid in (server_ids or []):
+        srv = reg.get(sid)
+        if not srv:
+            continue
+        for tool in srv.get("tools", []):
+            specs.append({"toolSpec": {
+                "name": f"mcp_{sid}_{tool}",
+                "description": f"MCP tool '{tool}' on server '{sid}'. Pass JSON key/value arguments.",
+                "inputSchema": {"json": {"type": "object", "properties": {},
+                                         "description": "Arguments for the MCP tool (key/value pairs)."}},
+            }})
+    return specs
+
+
+def parse_agent_tool(name: str, settings) -> tuple[str, str] | None:
+    """Map a Bedrock tool name (mcp_<server>_<tool>) back to (serverId, tool),
+    disambiguating against the registry (both ids may contain underscores)."""
+    if not name or not name.startswith("mcp_"):
+        return None
+    for sid, srv in servers(settings).items():
+        for tool in srv.get("tools", []):
+            if name == f"mcp_{sid}_{tool}":
+                return sid, tool
+    return None
+
+
+async def agent_call(sid: str, tool: str, args: dict, ctx) -> dict[str, Any]:
+    """Invoke an MCP tool on behalf of model.agent, returning rows/text to feed
+    back to the model. WRITE tools (server's `write_tools`) are NOT auto-executed
+    by an agent — they return a proposal requiring human approval (governance)."""
+    srv = servers(ctx.settings).get(sid)
+    if tool in (srv or {}).get("write_tools", []):
+        return {"kind": "text",
+                "value": f"PROPOSED: write tool '{tool}' on '{sid}' needs human approval — not executed by the agent."}
+    if _is_demo(ctx, srv):
+        return _tool_payload(tool, 50)
+    return await _live_call(srv, mode="tool", tool=tool, uri="", args=args or {}, ctx=ctx)
+
+
 # ---------------------------------------------------------------- live transport (lazy)
 async def _live_call(srv: dict, *, mode: str, tool: str, uri: str, args: dict, ctx) -> dict[str, Any]:
     try:

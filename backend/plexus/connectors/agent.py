@@ -8,8 +8,10 @@ model-driven control flow + tool use + a loop + a self-determined stop.
 from __future__ import annotations
 
 import asyncio
+import json
 from typing import Any, Awaitable, Callable
 
+from . import mcp
 from .demo_data import demo_bedrock_text
 from .neo4j import run_neo4j
 from .trino import run_trino
@@ -60,9 +62,19 @@ def _enabled_tools(config: dict) -> list[str]:
     return ["trino", "neo4j"]
 
 
+def _mcp_servers(config: dict) -> list[str]:
+    m = config.get("mcpServers")
+    if isinstance(m, list):
+        return m
+    if isinstance(m, str):
+        return [x.strip() for x in m.split(",") if x.strip()]
+    return []
+
+
 async def run_agent(config: dict, ctx, emit: Emit) -> dict[str, Any]:
     goal = ctx.resolve(config.get("goal") or config.get("prompt") or "", for_prompt=True)
     tools = _enabled_tools(config)
+    mcp_servers = _mcp_servers(config)
     max_steps = int(config.get("maxSteps", 5))
     steps: list[dict] = []
     answer = {"value": ""}
@@ -71,13 +83,13 @@ async def run_agent(config: dict, ctx, emit: Emit) -> dict[str, Any]:
         await emit({"output": {"kind": "agent", "steps": list(steps), "value": answer["value"]}})
 
     if ctx.settings.demo_mode:
-        return await _demo_agent(ctx, tools, steps, answer, push, emit)
+        return await _demo_agent(ctx, tools, mcp_servers, steps, answer, push, emit)
 
-    return await _live_agent(config, ctx, tools, max_steps, steps, answer, push, emit, goal)
+    return await _live_agent(config, ctx, tools, mcp_servers, max_steps, steps, answer, push, emit, goal)
 
 
 # --------------------------------------------------------------- demo
-async def _demo_agent(ctx, tools, steps, answer, push, emit) -> dict[str, Any]:
+async def _demo_agent(ctx, tools, mcp_servers, steps, answer, push, emit) -> dict[str, Any]:
     async def think(text: str):
         steps.append({"type": "think", "text": text})
         await push()
@@ -109,6 +121,11 @@ async def _demo_agent(ctx, tools, steps, answer, push, emit) -> dict[str, Any]:
             "MATCH (i:Incident)-[r]-(e)\nWHERE i.severity = 'P1'\nRETURN e.name, labels(e)[0], type(r) LIMIT 50",
             lambda: run_neo4j({"query": ""}, ctx, emit),
         )
+    for sid in mcp_servers[:1]:  # show the agent reaching an MCP tool in its loop
+        q = ctx.first_input_text() or "ip"
+        await think(f"I'll enrich indicators by calling the MCP server '{sid}'.")
+        await call(f"mcp_{sid}_search_iocs", json.dumps({"query": q}),
+                   lambda: mcp.agent_call(sid, "search_iocs", {"query": q}, ctx))
 
     await think("I have enough evidence. Writing the risk summary.")
     text = demo_bedrock_text(ctx.first_input_text(), len(incidents["rows"]) if incidents else 5)
@@ -122,7 +139,7 @@ async def _demo_agent(ctx, tools, steps, answer, push, emit) -> dict[str, Any]:
 
 
 # --------------------------------------------------------------- live (Bedrock)
-async def _live_agent(config, ctx, tools, max_steps, steps, answer, push, emit, goal) -> dict[str, Any]:
+async def _live_agent(config, ctx, tools, mcp_servers, max_steps, steps, answer, push, emit, goal) -> dict[str, Any]:
     try:
         import boto3  # noqa: WPS433 (lazy import by design)
     except ImportError as e:  # pragma: no cover
@@ -132,7 +149,8 @@ async def _live_agent(config, ctx, tools, max_steps, steps, answer, push, emit, 
 
     client = boto3.client("bedrock-runtime", region_name=ctx.settings.aws_region)
     model_id = config.get("modelId") or ctx.settings.bedrock_default_model
-    tool_config = {"tools": [TOOL_SPECS[t] for t in tools if t in TOOL_SPECS]}
+    tool_config = {"tools": [TOOL_SPECS[t] for t in tools if t in TOOL_SPECS]
+                   + mcp.agent_tool_specs(mcp_servers, ctx.settings)}
     system = [{"text": config.get("system") or
                "You are a security analyst agent. Use the tools to gather evidence, "
                "then give a concise risk summary with recommended actions."}]
@@ -179,6 +197,11 @@ async def _live_agent(config, ctx, tools, max_steps, steps, answer, push, emit, 
                     steps.append({"type": "tool_call", "tool": name, "input": inp.get("cypher", "")})
                     await push()
                     res = await run_neo4j({"query": inp.get("cypher", "")}, ctx, emit)
+                elif mcp.parse_agent_tool(name, ctx.settings):
+                    sid, mtool = mcp.parse_agent_tool(name, ctx.settings)
+                    steps.append({"type": "tool_call", "tool": name, "input": json.dumps(inp)})
+                    await push()
+                    res = await mcp.agent_call(sid, mtool, inp, ctx)
                 else:
                     res = {"kind": "text", "value": "unknown tool"}
                 n = len(res.get("rows", [])) if res.get("kind") == "rows" else 0

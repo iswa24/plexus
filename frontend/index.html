@@ -639,6 +639,7 @@ const TYPES = {
       ]},
       {k:'goal', t:'textarea', refs:true, label:'Goal / task (type @ to reference cards)'},
       {k:'tools', t:'checks', label:'Tools the agent may call', options:['trino','neo4j']},
+      {k:'mcpServers', t:'mcpchecks', label:'MCP servers the agent may use (least-privilege)'},
       {k:'system', t:'textarea', label:'System prompt'},
       {k:'catalog', t:'text', label:'Warehouse catalog (for the trino tool)'},
       {k:'schema', t:'text', label:'Warehouse schema (for the trino tool)'},
@@ -1198,6 +1199,10 @@ function renderInspector(){
       const opts=_MCP_SERVERS.map(s=>`<option value="${esc(s.id)}" ${s.id===v?'selected':''}>${esc(s.label||s.id)}</option>`).join('');
       h+=`<select data-k="${f.k}">${opts||'<option value="demo">Demo MCP server</option>'}</select>`;
       const srv=_MCP_SERVERS.find(s=>s.id===v); if(srv&&srv.tools&&srv.tools.length) h+=`<div class="help">Tools: ${esc(srv.tools.join(', '))}</div>`;
+    } else if(f.t==='mcpchecks'){
+      const arr=Array.isArray(v)?v:[];
+      if(!_MCP_SERVERS.length){ h+=`<div class="help">No MCP servers registered.</div>`; }
+      else h+=`<div class="checks">`+_MCP_SERVERS.map(s=>`<label class="chk"><input type="checkbox" data-k="${f.k}" data-opt="${esc(s.id)}" ${arr.includes(s.id)?'checked':''}/> ${esc(s.label||s.id)} <span class="help" style="display:inline">(${esc((s.tools||[]).join(', '))})</span></label>`).join('')+`</div>`;
     } else if(f.t==='checks'){
       const arr=Array.isArray(v)?v:[];
       h+=`<div class="checks">`+f.options.map(o=>`<label class="chk"><input type="checkbox" data-k="${f.k}" data-opt="${o}" ${arr.includes(o)?'checked':''}/> ${esc(o)}</label>`).join('')+`</div>`;

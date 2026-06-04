@@ -85,3 +85,34 @@ def test_source_mcp_runs_through_executor():
     results = _await(execute(app, {}, settings, PRIN, _noop))
     assert results["m"]["kind"] == "rows"
     assert results["o"]["kind"] == "rows"
+
+
+# ---------------------------------------------------------------- model.agent <-> MCP
+def test_agent_tool_specs_built_for_allowed_servers():
+    specs = mcp.agent_tool_specs(["demo"], settings)
+    names = [s["toolSpec"]["name"] for s in specs]
+    assert "mcp_demo_search_iocs" in names
+    # least-privilege: an un-listed server contributes nothing
+    assert mcp.agent_tool_specs([], settings) == []
+
+
+def test_parse_agent_tool_roundtrips_with_underscores():
+    assert mcp.parse_agent_tool("mcp_demo_search_iocs", settings) == ("demo", "search_iocs")
+    assert mcp.parse_agent_tool("query_warehouse", settings) is None
+
+
+def test_agent_call_read_returns_rows_in_demo():
+    out = _await(mcp.agent_call("demo", "search_iocs", {"query": "ip"}, _ctx()))
+    assert out["kind"] == "rows" and out["rows"]
+
+
+def test_agent_loop_uses_mcp_tool_in_demo():
+    """The demo agent loop, given an allowed MCP server, shows an MCP tool_call step."""
+    from plexus.connectors import agent
+    app = AppDef(name="x", nodes=[{"id": "i", "type": "input.text", "config": {"value": "185.23.41.9"}}], edges=[])
+    ctx = RunContext(app, {}, settings, PRIN)
+    ctx.results["i"] = {"kind": "text", "value": "185.23.41.9"}
+    out = _await(agent.run_agent(
+        {"goal": "@{i}", "tools": [], "mcpServers": ["demo"]}, ctx, _noop))
+    tool_calls = [s for s in out["steps"] if s.get("type") == "tool_call"]
+    assert any(s["tool"].startswith("mcp_demo_") for s in tool_calls)
