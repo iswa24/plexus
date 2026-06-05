@@ -137,7 +137,35 @@
   .insp-head{padding:15px 18px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px}
   .insp-head .nico{width:28px;height:28px}
   .insp-head h3{margin:0;font-size:14.5px}
-  .insp-body{padding:18px 18px 8px;flex:1}
+  .insp-body{padding:18px 18px 8px;flex:1;overflow:auto}
+  /* NDV tabs (Parameters | Input | Output) */
+  .insp-tabs{display:flex;gap:2px;padding:0 12px;border-bottom:1px solid var(--line);background:var(--panel)}
+  .itab{flex:1;background:none;border:none;color:var(--muted);font-size:12.5px;padding:10px 6px;cursor:pointer;
+    border-bottom:2px solid transparent;display:flex;align-items:center;justify-content:center;gap:6px}
+  .itab:hover{color:var(--text)}
+  .itab.on{color:var(--text);border-bottom-color:var(--accent2)}
+  .itab .dot{width:6px;height:6px;border-radius:50%;background:var(--ok)}
+  .out-bar{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+  .out-tabs{display:inline-flex;background:var(--panel2);border:1px solid var(--line);border-radius:8px;overflow:hidden}
+  .otab{background:none;border:none;color:var(--muted);font-size:11.5px;padding:5px 11px;cursor:pointer;text-transform:capitalize}
+  .otab.on{background:rgba(129,140,248,.18);color:var(--text)}
+  .pinbtn{background:none;border:1px solid var(--line);border-radius:7px;cursor:pointer;font-size:12px;padding:3px 7px;opacity:.6}
+  .pinbtn.on{opacity:1;border-color:var(--accent2);background:rgba(129,140,248,.16)}
+  .dtable{width:100%;border-collapse:collapse;font-size:11.5px}
+  .dtable th{text-align:left;color:var(--muted);font-weight:600;padding:5px 7px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--panel)}
+  .dtable td{padding:5px 7px;border-bottom:1px solid rgba(255,255,255,.05);color:var(--text);white-space:nowrap;max-width:160px;overflow:hidden;text-overflow:ellipsis}
+  .djson{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:10px;font-family:monospace;
+    font-size:11px;white-space:pre-wrap;word-break:break-word;color:#cdd9ec;max-height:48vh;overflow:auto}
+  .dschema{font-size:12px}
+  .schemarow{display:flex;justify-content:space-between;padding:6px 4px;border-bottom:1px solid rgba(255,255,255,.05)}
+  .schemarow b{color:var(--text);font-weight:600}.schemarow span{color:var(--muted);font-family:monospace;font-size:11px}
+  .out-meta{margin-top:8px;color:var(--muted);font-size:11px}
+  .in-block{margin-bottom:14px;border:1px solid var(--line);border-radius:10px;padding:10px;background:var(--panel)}
+  .in-head{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--text);margin-bottom:8px}
+  .refchip{font-family:monospace;font-size:11px;background:var(--panel2);border:1px solid var(--line);border-radius:6px;
+    padding:1px 6px;color:var(--accent2);cursor:pointer}
+  .refchip:hover{border-color:var(--accent2)}
+  .insp-empty{color:var(--muted);font-size:12.5px;padding:14px 2px;line-height:1.5}
   .field{margin-bottom:18px;position:relative}
   .field label{display:block;font-size:11px;color:var(--muted);margin-bottom:7px;
     text-transform:uppercase;letter-spacing:.5px;font-weight:600}
@@ -1021,7 +1049,7 @@ function deleteNode(id){
   if(state.sel===id) state.sel=null;
   markDirty(); render(); renderInspector();
 }
-function select(id){ state.sel=id; render(); renderInspector(); }
+function select(id){ if(id!==state.sel) inspTab='params'; state.sel=id; render(); renderInspector(); }
 
 /* ============================================================
    COORDINATE TRANSFORM
@@ -1270,6 +1298,11 @@ function flashHint(msg){ const h=document.getElementById('hint'); h.textContent=
 /* ============================================================
    INSPECTOR (config panel) + @ autocomplete
    ============================================================ */
+let inspTab='params';   // 'params' | 'input' | 'output'
+let outTab='table';     // 'table' | 'json' | 'schema'
+function setInspTab(t){ inspTab=t; renderInspector(); }
+function setOutTab(t){ outTab=t; renderInspector(); }
+
 function renderInspector(){
   const ins=document.getElementById('inspector');
   const node=state.nodes.find(n=>n.id===state.sel);
@@ -1277,8 +1310,26 @@ function renderInspector(){
     '<span class="ref-pill">SQL</span>, <span class="ref-pill">Cypher</span> or <span class="ref-pill">prompt</span>'+
     ' field, type <b>@</b> to reference another card\'s output.</div>'; return; }
   const d=TYPES[node.type];
+  const r=state.results[node.id];
+  const hasOut=!!(r&&r.output) || !!(state.pins&&state.pins[node.id]);
   let h=`<div class="insp-head"><span class="nico" style="background:${hex(d.color)}22;color:${hex(d.color)}">${d.icon}</span>
-    <div><h3>${d.name}</h3><div class="ntype">${node.id}</div></div></div><div class="insp-body">`;
+    <div><h3>${d.name}</h3><div class="ntype">${node.id}</div></div></div>`;
+  h+=`<div class="insp-tabs">
+    <button class="itab${inspTab==='params'?' on':''}" onclick="setInspTab('params')">Parameters</button>
+    <button class="itab${inspTab==='input'?' on':''}" onclick="setInspTab('input')">Input</button>
+    <button class="itab${inspTab==='output'?' on':''}" onclick="setInspTab('output')">Output${hasOut?' <span class="dot"></span>':''}</button>
+  </div>`;
+  h+=`<div class="insp-body">`;
+  if(inspTab==='input') h+=inspInputHTML(node);
+  else if(inspTab==='output') h+=inspOutputHTML(node,r);
+  else h+=inspParamsHTML(node,d);
+  h+=`</div><div class="insp-foot"><button class="btn danger" style="width:100%" onclick="deleteNode('${node.id}')">🗑 Delete node</button></div>`;
+  ins.innerHTML=h;
+  if(inspTab==='params') wireParamFields(ins,node);
+}
+
+function inspParamsHTML(node,d){
+  let h='';
   d.fields.forEach(f=>{
     const v=node.config[f.k]??'';
     h+=`<div class="field"><label>${f.label||f.k}</label>`;
@@ -1287,7 +1338,7 @@ function renderInspector(){
     } else if(f.t==='select'){
       h+=`<select data-k="${f.k}">`+f.options.map(o=>`<option ${o===v?'selected':''}>${esc(o)}</option>`).join('')+`</select>`;
     } else if(f.t==='agentsel'){
-      const opts=_AGENTS.filter(a=>a.id!==state.appId)  // don't let an agent call itself
+      const opts=_AGENTS.filter(a=>a.id!==state.appId)
         .map(a=>`<option value="${esc(a.id)}" ${a.id===v?'selected':''}>${esc(a.name||a.id)}</option>`).join('');
       h+=`<select data-k="${f.k}"><option value="">— pick a registered agent —</option>${opts}</select>`;
       if(!_AGENTS.length) h+=`<div class="help">No saved agents yet — save some agents first, then they appear here.</div>`;
@@ -1305,7 +1356,7 @@ function renderInspector(){
     } else {
       h+=`<input type="${f.t}" data-k="${f.k}" data-refs="${!!f.refs}" ${f.step?`step="${f.step}"`:''} value="${esc(v)}"/>`;
     }
-    if(f.refs) h+=`<div class="help">Type <b>@</b> to reference another card</div>`;
+    if(f.refs) h+=`<div class="help">Type <b>@</b> to reference another card · or copy a ref from the <b>Input</b> tab</div>`;
     h+=`</div>`;
   });
   if(node.type.startsWith('input')){
@@ -1313,9 +1364,10 @@ function renderInspector(){
         <div class="iopreview" id="iopPreview">${inputPreviewControls(node)}</div>
         <div class="iop-hint">👤 This is what the person running the app sees and fills in.</div>`;
   }
-  h+=`</div><div class="insp-foot"><button class="btn danger" style="width:100%" onclick="deleteNode('${node.id}')">🗑 Delete node</button></div>`;
-  ins.innerHTML=h;
+  return h;
+}
 
+function wireParamFields(ins,node){
   ins.querySelectorAll('[data-k]').forEach(inp=>{
     inp.addEventListener(inp.type==='checkbox'?'change':'input',()=>{
       if(inp.type==='checkbox'){
@@ -1335,6 +1387,64 @@ function renderInspector(){
     }
   });
 }
+
+/* ---- NDV: Output pane (Table / JSON / Schema) ---- */
+function _typeof(v){ return v===null?'null':Array.isArray(v)?'array':typeof v; }
+function renderOutData(o){
+  if(!o) return '<div class="insp-empty">No data.</div>';
+  if(outTab==='json') return `<pre class="djson">${esc(JSON.stringify(o,null,2))}</pre>`;
+  if(outTab==='schema'){
+    let rows=[];
+    if(o.kind==='rows'){ const first=(o.rows||[])[0]||{}; const cols=o.columns||Object.keys(first);
+      rows=cols.map(c=>[c,_typeof(first[c])]); rows.unshift(['(rows)',String((o.rows||[]).length)]); }
+    else if(o.kind==='document') rows=[['title',o.title||''],['kind','document'],['length',String((o.value||'').length)+' chars']];
+    else if(o.value!=null) rows=[['kind',o.kind||'text'],['length',String(String(o.value).length)+' chars']];
+    else rows=Object.keys(o).map(k=>[k,_typeof(o[k])]);
+    return '<div class="dschema">'+rows.map(([k,t])=>`<div class="schemarow"><b>${esc(k)}</b><span>${esc(t)}</span></div>`).join('')+'</div>';
+  }
+  // table
+  if(o.kind==='rows'){ const rows=o.rows||[]; const cols=o.columns||Object.keys(rows[0]||{});
+    if(!rows.length) return '<div class="insp-empty">0 rows.</div>';
+    return '<div style="overflow:auto;max-height:50vh"><table class="dtable"><thead><tr>'+
+      cols.map(c=>`<th>${esc(c)}</th>`).join('')+'</tr></thead><tbody>'+
+      rows.slice(0,50).map(rw=>'<tr>'+cols.map(c=>`<td title="${esc(rw[c])}">${esc(rw[c])}</td>`).join('')+'</tr>').join('')+
+      '</tbody></table></div>'+`<div class="out-meta">${rows.length} rows</div>`;
+  }
+  if(o.kind==='document') return `<div class="doc-card">${mdToHtml(o.value||'')}</div>`;
+  if(o.value!=null) return `<pre class="djson">${esc(String(o.value))}</pre>`;
+  return `<pre class="djson">${esc(JSON.stringify(o,null,2))}</pre>`;
+}
+function inspOutputHTML(node,r){
+  const pinned=state.pins&&state.pins[node.id];
+  const o=(r&&r.output)||pinned;
+  if(!o) return '<div class="insp-empty">No output yet.<br/>Run the flow (▶) to see this node\'s data here, then inspect it as a table, JSON, or schema.</div>';
+  let h='<div class="out-bar"><div class="out-tabs">'+
+    ['table','json','schema'].map(t=>`<button class="otab${outTab===t?' on':''}" onclick="setOutTab('${t}')">${t}</button>`).join('')+
+    `</div><button class="pinbtn${pinned?' on':''}" title="Pin this output (freeze for iteration)" onclick="togglePin('${node.id}')">📌 ${pinned?'pinned':'pin'}</button></div>`;
+  h+=renderOutData(o);
+  if(r&&(r.ms!=null||r.tokens!=null)) h+=`<div class="out-meta">${r.ms!=null?r.ms+' ms':''}${r.tokens?' · '+r.tokens+' tok':''}${pinned?' · 📌 pinned':''}</div>`;
+  return h;
+}
+function togglePin(id){ state.pins=state.pins||{}; if(state.pins[id]) delete state.pins[id];
+  else { const r=state.results[id]; if(r&&r.output) state.pins[id]=JSON.parse(JSON.stringify(r.output)); }
+  renderInspector(); }
+
+/* ---- NDV: Input pane (data flowing in from upstream nodes) ---- */
+function inspInputHTML(node){
+  const incoming=state.edges.filter(e=>e.target===node.id);
+  if(!incoming.length) return '<div class="insp-empty">No inputs.<br/>This node has no incoming connections — wire another card\'s right ● into this node.</div>';
+  let h='<div class="insp-empty" style="padding-top:0">Data flowing into this node. Click a <span class="refchip">@{ref}</span> to copy it into a parameter.</div>';
+  incoming.forEach(e=>{
+    const src=state.nodes.find(n=>n.id===e.source); if(!src)return;
+    const sr=state.results[src.id]; const o=(sr&&sr.output)||(state.pins&&state.pins[src.id]);
+    h+=`<div class="in-block"><div class="in-head">⟵ ${esc(src.config.label||TYPES[src.type].name)} `+
+       `<span class="refchip" title="copy reference" onclick="copyRef('${src.id}')">@{${esc(src.id)}}</span></div>`;
+    h+= o ? renderOutData(o) : '<div class="insp-empty">no data yet — run the flow (▶)</div>';
+    h+='</div>';
+  });
+  return h;
+}
+function copyRef(id){ const t='@{'+id+'}'; if(navigator.clipboard) navigator.clipboard.writeText(t); toast&&toast('Copied '+t); }
 /* Live preview of an input card as the app user will see it at run time. */
 function inputPreviewControls(node){
   const c=node.config, label=esc(c.label||'Input');
@@ -1427,6 +1537,7 @@ function runApp(){
         error:f.error,
       };
       if(f.status==='running'&&f.output) updateOneNode(f.nodeId); else render();
+      if(f.nodeId===state.sel && inspTab!=='params') renderInspector();  // live NDV data
       const node=state.nodes.find(n=>n.id===f.nodeId);
       if(f.status==='done') logLine(node, state.results[f.nodeId]);
       if(f.status==='error') logLine(node, {error:f.error});
