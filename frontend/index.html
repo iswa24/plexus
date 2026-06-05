@@ -193,6 +193,19 @@
   .modal-bg{position:fixed;inset:0;background:rgba(4,7,12,.66);backdrop-filter:blur(3px);
     z-index:100;display:none;align-items:flex-start;justify-content:center;padding-top:8vh}
   .modal-bg.show{display:flex}
+  .cmdk{width:600px;max-width:92vw;background:var(--panel);border:1px solid var(--line);border-radius:14px;
+    box-shadow:0 24px 70px rgba(0,0,0,.6);overflow:hidden}
+  .cmdk-input{width:100%;box-sizing:border-box;background:transparent;border:none;outline:none;color:var(--text);
+    font-size:16px;padding:16px 18px;border-bottom:1px solid var(--line)}
+  .cmdk-list{max-height:46vh;overflow:auto;padding:6px}
+  .cmdk-item{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:9px 12px;border-radius:8px;cursor:pointer}
+  .cmdk-item small{color:var(--muted);font-size:11px}
+  .cmdk-item.sel{background:rgba(129,140,248,.18)}
+  .cmdk-empty{padding:14px;color:var(--muted);text-align:center}
+  .kbd{display:inline-block;min-width:18px;text-align:center;padding:2px 7px;border:1px solid var(--line);
+    border-bottom-width:2px;border-radius:6px;background:var(--panel2);color:var(--text);font-size:12px;font-family:monospace}
+  .help-row{display:flex;justify-content:space-between;align-items:center;padding:7px 2px;border-bottom:1px solid rgba(255,255,255,.04)}
+  .help-row span{color:var(--muted)}
   .modal{width:560px;max-width:92vw;max-height:78vh;background:var(--panel);border:1px solid var(--line);
     border-radius:14px;box-shadow:0 24px 70px rgba(0,0,0,.6);display:flex;flex-direction:column;overflow:hidden}
   .modal-head{display:flex;align-items:center;padding:15px 18px;border-bottom:1px solid var(--line)}
@@ -449,6 +462,23 @@
         <button class="btn ghost" onclick="closeLibrary()">✕</button>
       </div>
       <div class="modal-body" id="libList"></div>
+    </div>
+  </div>
+
+  <!-- Command palette (⌘K) -->
+  <div class="modal-bg" id="cmdkModal" onclick="if(event.target===this)closePalette()">
+    <div class="cmdk">
+      <input id="cmdkInput" class="cmdk-input" placeholder="Type a command or node name…  (↑↓ to move · ↵ to run · esc)"
+             oninput="renderPalette()" onkeydown="cmdkKey(event)" autocomplete="off"/>
+      <div id="cmdkList" class="cmdk-list"></div>
+    </div>
+  </div>
+
+  <!-- Keyboard shortcuts (?) -->
+  <div class="modal-bg" id="helpModal" onclick="if(event.target===this)closeHelp()">
+    <div class="modal" style="max-width:460px">
+      <div class="modal-head"><h3>⌨ Keyboard shortcuts</h3><button class="btn ghost" onclick="closeHelp()">✕</button></div>
+      <div class="modal-body" id="helpBody"></div>
     </div>
   </div>
 
@@ -766,6 +796,52 @@ const TYPES = {
     summary:n=>'🔌 '+(mcpServerName(n.config.serverId)||n.config.serverId||'demo')+' · '+(n.config.tool||'tool')+(n.config.sideEffect==='write'?' · write (gated)':''),
     badge:'MCP · tool',
   },
+  /* ---- Data Ops: first-class dbt + Kestra (wrap the dbt/kestra MCP servers) ---- */
+  'dbt.list': {
+    cat:'Data Ops', name:'dbt · List Models', icon:'🧱', color:'#F2682A',
+    defaults:{}, fields:[{k:'maxRows', t:'number', label:'Max rows'}],
+    summary:n=>'🧱 dbt · list models on Iceberg', badge:'dbt · read',
+  },
+  'dbt.lineage': {
+    cat:'Data Ops', name:'dbt · Lineage', icon:'🧱', color:'#F2682A',
+    defaults:{model:'fct_open_p1'}, fields:[{k:'model', t:'text', refs:true, label:'Model'}],
+    summary:n=>'🧱 dbt · lineage of '+(n.config.model||'?'), badge:'dbt · read',
+  },
+  'dbt.test': {
+    cat:'Data Ops', name:'dbt · Test', icon:'🧱', color:'#F2682A',
+    defaults:{model:''}, fields:[{k:'model', t:'text', refs:true, label:'Models (select; blank = all)'}],
+    summary:n=>'🧱 dbt · test '+(n.config.model||'all'), badge:'dbt · read',
+  },
+  'dbt.run': {
+    cat:'Data Ops', name:'dbt · Run (build)', icon:'🧱', color:'#F2682A',
+    defaults:{model:'', approved:false},
+    fields:[
+      {k:'model', t:'text', refs:true, label:'Models (select; blank = all)'},
+      {k:'approved', t:'checks', label:'Approval (required to execute)', options:['approved']},
+    ],
+    summary:n=>'🧱 dbt · run '+(n.config.model||'all')+' · write (gated)', badge:'dbt · write',
+  },
+  'kestra.flows': {
+    cat:'Data Ops', name:'Kestra · List Flows', icon:'🧭', color:'#7C4DFF',
+    defaults:{namespace:'security'}, fields:[{k:'namespace', t:'text', label:'Namespace'}],
+    summary:n=>'🧭 Kestra · flows in '+(n.config.namespace||'security'), badge:'kestra · read',
+  },
+  'kestra.status': {
+    cat:'Data Ops', name:'Kestra · Status', icon:'🧭', color:'#7C4DFF',
+    defaults:{executionId:''}, fields:[{k:'executionId', t:'text', refs:true, label:'Execution id'}],
+    summary:n=>'🧭 Kestra · status', badge:'kestra · read',
+  },
+  'kestra.trigger': {
+    cat:'Data Ops', name:'Kestra · Trigger Flow', icon:'🧭', color:'#7C4DFF',
+    defaults:{namespace:'security', flow:'daily_incident_brief', inputs:'', approved:false},
+    fields:[
+      {k:'namespace', t:'text', label:'Namespace'},
+      {k:'flow', t:'text', label:'Flow id'},
+      {k:'inputs', t:'textarea', code:true, refs:true, label:'Inputs (JSON; type @ to reference cards)'},
+      {k:'approved', t:'checks', label:'Approval (required to execute)', options:['approved']},
+    ],
+    summary:n=>'🧭 Kestra · trigger '+(n.config.flow||'?')+' · write (gated)', badge:'kestra · write',
+  },
   'flow.branch': {
     cat:'Orchestration', name:'Branch (if / else)', icon:'⑂', color:'#eab308',
     defaults:{ left:'@{triage}', op:'contains', right:'P1' },
@@ -826,7 +902,7 @@ const TYPES = {
     summary:n=>'{ } '+oneline(n.config.source),
   },
 };
-const PALETTE_ORDER = ['Input','Source','Sub-agents','Orchestration','Actions','Output'];
+const PALETTE_ORDER = ['Input','Source','Sub-agents','Data Ops','Orchestration','Actions','Output'];
 
 /* registered-agent cache (for the agent picker on agent.call / flow.foreach) */
 let _AGENTS=[];
@@ -1175,11 +1251,17 @@ wrap.addEventListener('mousedown',e=>{
 });
 
 document.addEventListener('keydown',e=>{
-  if((e.key==='Delete'||e.key==='Backspace')&&state.sel&&document.activeElement.tagName!=='INPUT'
-     &&document.activeElement.tagName!=='TEXTAREA'&&document.activeElement.tagName!=='SELECT'){
-    deleteNode(state.sel);
-  }
+  const tag=document.activeElement.tagName, typing=(tag==='INPUT'||tag==='TEXTAREA'||tag==='SELECT');
+  const meta=e.metaKey||e.ctrlKey;
+  if(meta && e.key.toLowerCase()==='k'){ e.preventDefault(); openPalette(); return; }
+  if(meta && e.key.toLowerCase()==='s'){ e.preventDefault(); if(typeof saveCurrentApp==='function') saveCurrentApp(); return; }
+  if(meta && e.key.toLowerCase()==='z' && !typing){ e.preventDefault(); e.shiftKey?redo():undo(); return; }
+  if(meta && e.key.toLowerCase()==='y' && !typing){ e.preventDefault(); redo(); return; }
+  if(e.key==='?' && !typing){ e.preventDefault(); openHelp(); return; }
+  if(e.key==='Escape'){ closePalette(); closeHelp(); }
+  if((e.key==='Delete'||e.key==='Backspace')&&state.sel&&!typing){ deleteNode(state.sel); }
 });
+window.addEventListener('beforeunload',e=>{ if(state.dirty){ e.preventDefault(); e.returnValue=''; } });
 
 function flashHint(msg){ const h=document.getElementById('hint'); h.textContent=msg; h.style.display='block';
   setTimeout(()=>{ h.style.display=state.nodes.length?'none':'block';
@@ -1871,7 +1953,7 @@ function loadAppDef(def){
   state.edges=(def.edges||[]).map(e=>({id:e.id||uid('e'),source:e.source,target:e.target,label:e.label||''}));
   state.results={}; state.sel=null; state.appId=def.id||null;
   const maxId=state.nodes.length+state.edges.length+5; state.idc=Math.max(state.idc,maxId);
-  render(); renderInspector(); markClean();
+  render(); renderInspector(); markClean(); resetHistory();
 }
 function clearCanvas(){ state.nodes=[]; state.edges=[]; state.results={}; state.sel=null; render(); renderInspector(); }
 
@@ -1884,8 +1966,69 @@ async function apiJSON(path, opts){
   return r.status===204 ? null : r.json();
 }
 
-function markDirty(){ state.dirty=true; updateSavedTag(); }
+function markDirty(){ state.dirty=true; updateSavedTag(); clearTimeout(state._histT); state._histT=setTimeout(pushHistory,350); }
 function markClean(){ state.dirty=false; updateSavedTag(); }
+
+/* ---------- undo / redo (snapshot stack) ---------- */
+state.hist=[]; state.histIdx=-1; state._histT=null;
+function _snap(){ return JSON.stringify({nodes:state.nodes, edges:state.edges}); }
+function pushHistory(){ const s=_snap(); if(state.hist[state.histIdx]===s) return;
+  state.hist=state.hist.slice(0,state.histIdx+1); state.hist.push(s);
+  if(state.hist.length>60) state.hist.shift(); state.histIdx=state.hist.length-1; }
+function resetHistory(){ state.hist=[_snap()]; state.histIdx=0; }
+function _restore(s){ const d=JSON.parse(s); state.nodes=d.nodes; state.edges=d.edges; state.sel=null;
+  render(); renderInspector(); state.dirty=true; updateSavedTag(); }
+function undo(){ if(state.histIdx>0){ state.histIdx--; _restore(state.hist[state.histIdx]); flashHint('↩ undo'); } }
+function redo(){ if(state.histIdx<state.hist.length-1){ state.histIdx++; _restore(state.hist[state.histIdx]); flashHint('↪ redo'); } }
+
+/* ---------- command palette (⌘K) ---------- */
+let cmdkItems=[], cmdkSel=0;
+function paletteCommands(){
+  const c=[
+    {label:'Run flow', hint:'▶ Run', act:()=>runApp()},
+    {label:'Save app', hint:'⌘S', act:()=>saveCurrentApp()},
+    {label:'Generate flow from a prompt', hint:'✨', act:()=>openGenerate()},
+    {label:'New app', hint:'', act:()=>newApp()},
+    {label:'My apps / library', hint:'', act:()=>openLibrary()},
+    {label:'Fit view to flow', hint:'', act:()=>resetView()},
+    {label:'Undo', hint:'⌘Z', act:()=>undo()},
+    {label:'Redo', hint:'⌘⇧Z', act:()=>redo()},
+    {label:'Switch to Chat mode', hint:'', act:()=>setMode('chat')},
+    {label:'Switch to Builder mode', hint:'', act:()=>setMode('builder')},
+    {label:'Keyboard shortcuts', hint:'?', act:()=>openHelp()},
+  ];
+  const nodes=state.nodes.map(n=>({label:'Go to · '+(n.config.label||TYPES[n.type].name),
+    hint:n.type, act:()=>{ select(n.id); centerOn(n); }}));
+  return c.concat(nodes);
+}
+function centerOn(n){ const w=document.getElementById('canvasWrap').getBoundingClientRect();
+  state.view.scale=Math.max(state.view.scale,0.85);
+  state.view.x=w.width/2-(n.x+118)*state.view.scale; state.view.y=w.height/2-(n.y+50)*state.view.scale;
+  applyView(); drawEdges(); }
+function openPalette(){ if(state.mode!=='builder') setMode('builder');
+  document.getElementById('cmdkModal').classList.add('show');
+  const i=document.getElementById('cmdkInput'); i.value=''; cmdkSel=0; renderPalette(); setTimeout(()=>i.focus(),30); }
+function closePalette(){ document.getElementById('cmdkModal').classList.remove('show'); }
+function renderPalette(){ const q=(document.getElementById('cmdkInput').value||'').toLowerCase();
+  cmdkItems=paletteCommands().filter(c=>c.label.toLowerCase().includes(q)).slice(0,10);
+  if(cmdkSel>=cmdkItems.length) cmdkSel=Math.max(0,cmdkItems.length-1);
+  document.getElementById('cmdkList').innerHTML=cmdkItems.map((c,i)=>
+    `<div class="cmdk-item${i===cmdkSel?' sel':''}" onmousedown="event.preventDefault();cmdkRun(${i})">`+
+    `<span>${esc(c.label)}</span><small>${esc(c.hint||'')}</small></div>`).join('')||'<div class="cmdk-empty">No matches</div>'; }
+function cmdkRun(i){ const c=cmdkItems[i]; closePalette(); if(c) setTimeout(c.act,10); }
+function cmdkKey(e){ if(e.key==='ArrowDown'){cmdkSel=Math.min(cmdkSel+1,cmdkItems.length-1);renderPalette();e.preventDefault();}
+  else if(e.key==='ArrowUp'){cmdkSel=Math.max(cmdkSel-1,0);renderPalette();e.preventDefault();}
+  else if(e.key==='Enter'){cmdkRun(cmdkSel);e.preventDefault();}
+  else if(e.key==='Escape'){closePalette();} }
+
+/* ---------- keyboard cheat-sheet (?) ---------- */
+const _SHORTCUTS=[['⌘ / Ctrl + K','Command palette'],['⌘ / Ctrl + S','Save app'],['⌘ / Ctrl + Z','Undo'],
+  ['⌘ / Ctrl + ⇧ + Z','Redo'],['Delete / ⌫','Delete selected node'],['Ctrl + scroll','Zoom canvas'],
+  ['drag right ● → left ●','Wire two nodes'],['click an edge','Delete that edge'],['?','This cheat-sheet']];
+function openHelp(){ document.getElementById('helpBody').innerHTML=_SHORTCUTS.map(([k,d])=>
+  `<div class="help-row"><span>${esc(d)}</span><span class="kbd">${esc(k)}</span></div>`).join('');
+  document.getElementById('helpModal').classList.add('show'); }
+function closeHelp(){ document.getElementById('helpModal').classList.remove('show'); }
 function updateSavedTag(){
   const tag=document.getElementById('savedTag');
   if(state.dirty){ tag.innerHTML='· <b style="color:#f0b86b">unsaved changes</b>'; return; }
@@ -1910,7 +2053,7 @@ function newApp(){
   if(state.dirty && !confirm('Discard unsaved changes and start a new app?')) return;
   state.nodes=[]; state.edges=[]; state.results={}; state.sel=null; state.appId=null; state.savedAt=null; state.idc=1;
   document.getElementById('appName').value='Untitled app';
-  render(); renderInspector(); markClean();
+  render(); renderInspector(); markClean(); resetHistory();
 }
 
 function openLibrary(){ document.getElementById('libModal').classList.add('show'); renderLibrary(); }
@@ -1999,7 +2142,7 @@ function loadSample(){
   link(q.id,llm.id); link(trino.id,llm.id); link(neo.id,llm.id);
   link(llm.id,out.id); link(trino.id,tbl.id);
   document.getElementById('appName').value='Incident Triage Assistant';
-  state.appId=null; state.sel=llm.id; render(); renderInspector(); resetView(); markClean();
+  state.appId=null; state.sel=llm.id; render(); renderInspector(); resetView(); markClean(); resetHistory();
 }
 function addNodeAt(type,x,y,cfg){
   const d=TYPES[type];

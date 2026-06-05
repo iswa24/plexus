@@ -22,6 +22,8 @@ VALID_TYPES = {
     "model.bedrock", "model.agent", "model.nl2sql", "model.cypher",
     "model.classify", "model.detection", "model.rag", "model.prompt",
     "action.webhook", "source.mcp", "tool.mcp",
+    "dbt.list", "dbt.lineage", "dbt.test", "dbt.run",
+    "kestra.flows", "kestra.status", "kestra.trigger",
     "flow.branch", "agent.call", "flow.foreach",
     "output.text", "output.table", "output.document", "output.json",
 }

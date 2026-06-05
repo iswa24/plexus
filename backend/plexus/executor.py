@@ -170,6 +170,8 @@ async def run_node(node: Node, ctx: RunContext, emit: Emit) -> dict[str, Any]:
         return await run_mcp_resource(cfg, ctx, emit)
     if t == "tool.mcp":
         return await run_mcp_tool(cfg, ctx, emit)
+    if t in _BRANDED:
+        return await _run_branded(t, cfg, ctx, emit)
     if t == "flow.branch":
         return await run_branch(cfg, ctx, emit)
     if t == "agent.call":
@@ -196,6 +198,36 @@ async def run_node(node: Node, ctx: RunContext, emit: Emit) -> dict[str, Any]:
         return {"kind": "json", "value": out}
 
     return {"kind": "text", "value": ""}
+
+
+# ---------------------------------------------------------------- branded dbt/Kestra nodes
+# First-class nodes that wrap the dbt/Kestra MCP servers so authors see real
+# branded cards (not a generic "MCP server / pick a tool" picker). Each entry:
+# (serverId, tool, side, [friendly_field -> tool_arg]). side "write" -> approval-gated.
+_BRANDED = {
+    "dbt.list":      ("dbt", "list_models", "read", {}),
+    "dbt.lineage":   ("dbt", "model_lineage", "read", {"model": "model"}),
+    "dbt.test":      ("dbt", "dbt_test", "read", {"models": "model"}),
+    "dbt.run":       ("dbt", "dbt_run", "write", {"models": "model"}),
+    "kestra.flows":  ("kestra", "list_flows", "read", {"namespace": "namespace"}),
+    "kestra.status": ("kestra", "flow_status", "read", {"executionId": "execution_id"}),
+    "kestra.trigger": ("kestra", "trigger_flow", "write",
+                       {"namespace": "namespace", "flow": "flow", "inputs": "inputs"}),
+}
+
+
+async def _run_branded(t: str, cfg: dict, ctx, emit) -> dict[str, Any]:
+    import json as _json
+    server, tool, side, fieldmap = _BRANDED[t]
+    args = {arg: ctx.resolve(str(cfg.get(field, "") or ""), for_prompt=False)
+            for field, arg in fieldmap.items()}
+    mcfg = {"serverId": server, "tool": tool, "mode": "tool", "args": _json.dumps(args)}
+    if side == "write":
+        mcfg["sideEffect"] = "write"
+        mcfg["approved"] = cfg.get("approved")
+        return await run_mcp_tool(mcfg, ctx, emit)
+    mcfg["maxRows"] = int(cfg.get("maxRows", 200) or 200)
+    return await run_mcp_resource(mcfg, ctx, emit)
 
 
 # ---------------------------------------------------------------- control flow
