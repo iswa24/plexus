@@ -239,3 +239,47 @@ def test_orchestrate_returns_none_when_no_agent_fits(monkeypatch):
     monkeypatch.setattr(llmmod, "complete", fake_complete)
     # no reuse → let the single-agent generator handle it
     assert _await(generator._orchestrate("totally novel request", settings)) is None
+
+
+# ---------------------------------------------------------------- error policy (wave 3)
+def _err_flow(onError=None, maxTries=None, err_edge=False):
+    cfg = {"agentId": "does_not_exist", "input": "@{q}"}
+    if onError: cfg["onError"] = onError
+    if maxTries: cfg["maxTries"] = maxTries
+    nodes = [
+        {"id": "q", "type": "input.text", "config": {"value": "x"}},
+        {"id": "b", "type": "agent.call", "config": cfg},          # bad id -> always errors
+        {"id": "o", "type": "output.text", "config": {"template": "@{b}"}},
+    ]
+    edges = [{"id": "e1", "source": "q", "target": "b"},
+             {"id": "e2", "source": "b", "target": "o"}]
+    if err_edge:
+        nodes.append({"id": "h", "type": "output.text", "config": {"template": "handled"}})
+        edges.append({"id": "e3", "source": "b", "target": "h", "label": "error"})
+    return AppDef(name="err", nodes=nodes, edges=edges)
+
+
+def test_onerror_stop_prunes_downstream():
+    results, frames = _run(_err_flow(onError="stop"))
+    assert _statuses(frames)["o"] == "skipped"      # downstream halted on error
+
+
+def test_onerror_continue_runs_downstream():
+    results, frames = _run(_err_flow(onError="continue"))
+    assert _statuses(frames)["o"] == "done"          # downstream still runs
+
+
+def test_onerror_route_uses_error_edge():
+    results, frames = _run(_err_flow(onError="route", err_edge=True))
+    st = _statuses(frames)
+    assert st["h"] == "done"        # error-output branch runs
+    assert st["o"] == "skipped"     # normal branch pruned
+    assert results["h"]["value"] == "handled"
+
+
+def test_retry_on_fail_attempts_then_errors():
+    results, frames = _run(_err_flow(maxTries=3))
+    retries = [f for f in frames if f.get("nodeId") == "b" and f.get("status") == "running"
+               and isinstance(f.get("output"), dict) and "retry" in str(f["output"].get("value", ""))]
+    assert len(retries) == 2                          # 2 retries before the 3rd (final) attempt
+    assert any(f.get("nodeId") == "b" and f.get("status") == "error" for f in frames)

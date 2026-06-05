@@ -1195,17 +1195,24 @@ function drawEdges(){
     p.setAttribute('stroke',run?cssVar('--ok'):'#7c8aa5'); p.setAttribute('stroke-width','2.5');
     p.setAttribute('stroke-linecap','round'); p.setAttribute('marker-end','url(#arrowhead)');
     g.appendChild(hit); g.appendChild(p);
-    if(e.label){  // branch routing label (true/false) — click to flip
+    const srcRoute=(byId[e.source]||{}).config&&byId[e.source].config.onError==='route';
+    if(e.label || srcRoute){  // routing label — branch (true/false) or error-output
       const mx=(a.x+b.x)/2, my=(a.y+b.y)/2;
-      const isT=e.label==='true', col=isT?'#22c55e':'#ef4444';
+      let col='#7c8aa5', txt='+error';
+      if(e.label==='true'){ col='#22c55e'; txt='✓ true'; }
+      else if(e.label==='false'){ col='#ef4444'; txt='✗ false'; }
+      else if(e.label==='error'){ col='#f59e0b'; txt='⚠ error'; }
       const lbl=document.createElementNS('http://www.w3.org/2000/svg','text');
       lbl.setAttribute('x',mx); lbl.setAttribute('y',my-4);
       lbl.setAttribute('text-anchor','middle'); lbl.setAttribute('fill',col);
       lbl.setAttribute('font-size','11'); lbl.setAttribute('font-weight','700');
       lbl.style.cursor='pointer'; lbl.style.userSelect='none';
-      lbl.textContent=(isT?'✓ ':'✗ ')+e.label;
+      lbl.textContent=txt;
       lbl.addEventListener('click',ev=>{ ev.stopPropagation();
-        e.label=isT?'false':'true'; markDirty(); drawEdges(); });
+        if(e.label==='true') e.label='false';
+        else if(e.label==='false') e.label='true';
+        else e.label = e.label==='error' ? '' : 'error';   // toggle error edge on route nodes
+        markDirty(); drawEdges(); });
       g.appendChild(lbl);
     }
     svg.appendChild(g);
@@ -1363,6 +1370,21 @@ function inspParamsHTML(node,d){
     h+=`<div class="insp-section">User interaction · preview</div>
         <div class="iopreview" id="iopPreview">${inputPreviewControls(node)}</div>
         <div class="iop-hint">👤 This is what the person running the app sees and fills in.</div>`;
+  }
+  // Error handling (engine-level) — for runnable nodes (not pure input/output)
+  if(/^(source|model|action|tool|agent|flow\.foreach|dbt|kestra)/.test(node.type)){
+    const oe=node.config.onError||'stop';
+    h+=`<div class="insp-section">⚠ Error handling</div>
+      <div class="field"><label>On error</label>
+        <select data-k="onError">
+          ${['stop','continue','route'].map(o=>`<option ${o===oe?'selected':''}>${o}</option>`).join('')}
+        </select>
+        <div class="help">stop = halt downstream · continue = run anyway · route = take the <b>error</b> edge</div>
+      </div>
+      <div class="field"><label>Max tries (retry on fail)</label>
+        <input type="number" data-k="maxTries" value="${esc(node.config.maxTries||1)}" min="1"/></div>
+      <div class="field"><label>Wait between tries (ms)</label>
+        <input type="number" data-k="retryWaitMs" value="${esc(node.config.retryWaitMs||0)}" min="0" step="100"/></div>`;
   }
   return h;
 }
