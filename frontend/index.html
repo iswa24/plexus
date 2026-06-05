@@ -406,7 +406,14 @@
     <div class="canvas-wrap" id="canvasWrap">
       <div class="hint" id="hint">Drag cards from the left · drag a node's right ● into another's left ● to wire · click a node to configure</div>
       <div class="canvas" id="canvas">
-        <svg class="edges" id="edges" width="10000" height="8000"></svg>
+        <svg class="edges" id="edges" width="10000" height="8000">
+          <defs>
+            <marker id="arrowhead" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11"
+                    refX="8" refY="4" orient="auto">
+              <path d="M0,0 L8,4 L0,8 Z" fill="context-stroke"></path>
+            </marker>
+          </defs>
+        </svg>
       </div>
       <div class="zoombar">
         <button onclick="zoomBy(1.15)">+</button>
@@ -839,7 +846,12 @@ function shortModel(m){ if(!m)return'';
   if(base.startsWith('claude')) base=base.replace(/^claude-?/,'Claude ');
   return base.replace(/-/g,' ').replace(/\s+/g,' ').trim()||m; }
 function esc(s){ return (s+'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
-function cssVar(v){ return v.startsWith('var(')? getComputedStyle(document.documentElement).getPropertyValue(v.slice(4,-1)).trim() : v; }
+function cssVar(v){
+  if(!v) return v;
+  if(v.startsWith('var(')) return getComputedStyle(document.documentElement).getPropertyValue(v.slice(4,-1)).trim()||v;
+  if(v.startsWith('--')) return getComputedStyle(document.documentElement).getPropertyValue(v).trim()||v;  // bare custom-prop name
+  return v;
+}
 function uid(p){ return p+'_'+(state.idc++).toString(36); }
 
 /* ============================================================
@@ -1066,6 +1078,7 @@ function drawEdges(){
   state.edges.forEach(e=>{
     const s=byId[e.source], t=byId[e.target]; if(!s||!t)return;
     const a=portPos(s,'out'), b=portPos(t,'in');
+    const tip={x:b.x-9, y:b.y};  // stop just outside the target port so the arrowhead points into it
     const run=state.results[e.source]&&state.results[e.source].status==='done';
     const g=document.createElementNS('http://www.w3.org/2000/svg','g');
     const hit=document.createElementNS('http://www.w3.org/2000/svg','path');
@@ -1074,9 +1087,9 @@ function drawEdges(){
     hit.style.pointerEvents='stroke'; hit.style.cursor='pointer';
     hit.addEventListener('click',()=>{ state.edges=state.edges.filter(x=>x.id!==e.id); markDirty(); render(); });
     const p=document.createElementNS('http://www.w3.org/2000/svg','path');
-    p.setAttribute('d',wirePath(a,b)); p.setAttribute('fill','none');
-    p.setAttribute('stroke',run?cssVar('--ok'):'#46536b'); p.setAttribute('stroke-width','2.5');
-    if(run) p.setAttribute('stroke-dasharray','none');
+    p.setAttribute('d',wirePath(a,tip)); p.setAttribute('fill','none');
+    p.setAttribute('stroke',run?cssVar('--ok'):'#7c8aa5'); p.setAttribute('stroke-width','2.5');
+    p.setAttribute('stroke-linecap','round'); p.setAttribute('marker-end','url(#arrowhead)');
     g.appendChild(hit); g.appendChild(p);
     if(e.label){  // branch routing label (true/false) — click to flip
       const mx=(a.x+b.x)/2, my=(a.y+b.y)/2;
@@ -1116,6 +1129,7 @@ function startWire(e,node){
   tempWire=document.createElementNS('http://www.w3.org/2000/svg','path');
   tempWire.setAttribute('fill','none'); tempWire.setAttribute('stroke',cssVar('--accent2'));
   tempWire.setAttribute('stroke-width','2.5'); tempWire.setAttribute('stroke-dasharray','5 4');
+  tempWire.setAttribute('marker-end','url(#arrowhead)');
   svg.appendChild(tempWire);
   function mv(ev){ const b=screenToWorld(ev.clientX,ev.clientY); tempWire.setAttribute('d',wirePath(a,b)); }
   function up(ev){

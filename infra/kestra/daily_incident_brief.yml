@@ -1,0 +1,73 @@
+id: daily_incident_brief
+namespace: security
+description: |
+  The synergy loop — DBT refreshes curated Iceberg tables, a quality gate guards
+  the run, then Plexus (the reasoning layer) is called over HTTP to produce the
+  executive brief, which is written back to Iceberg and posted to Slack.
+  Identity flows end-to-end via the X-User header (OBO -> Trino row-level security).
+
+# 6am daily
+triggers:
+  - id: schedule
+    type: io.kestra.plugin.core.trigger.Schedule
+    cron: "0 6 * * *"
+
+inputs:
+  - id: run_as
+    type: STRING
+    defaults: soc-service@corp        # the identity Plexus/Trino enforce (OBO)
+  - id: plexus_url
+    type: STRING
+    defaults: http://plexus.internal:8000
+  - id: agent_id
+    type: STRING
+    defaults: app_de72b3a1             # the registered "Critical Incident Remediation & Exec Summary" agent
+
+tasks:
+  # 1) refresh the curated models on Iceberg
+  - id: dbt_build
+    type: io.kestra.plugin.scripts.shell.Commands
+    taskRunner:
+      type: io.kestra.plugin.core.runner.Process
+    commands:
+      - dbt run  --select +fct_open_p1 +mart_exec_brief
+      - dbt test --select +fct_open_p1
+
+  # 2) quality gate — only continue if the freshness/quality tests passed
+  #    (dbt test exits non-zero on failure, so reaching here means green)
+
+  # 3) call Plexus — the reasoning layer — passing the caller identity (OBO)
+  - id: plexus_brief
+    type: io.kestra.plugin.core.http.Request
+    uri: "{{ inputs.plexus_url }}/api/apps/{{ inputs.agent_id }}/run"
+    method: POST
+    contentType: application/json
+    headers:
+      X-User: "{{ inputs.run_as }}"     # -> Plexus audit + Trino RLS on Iceberg
+    body: |
+      {"inputs": {}}
+    options:
+      timeout: PT5M
+
+  # 4) persist the brief back to Iceberg (versioned record of every run)
+  - id: write_iceberg
+    type: io.kestra.plugin.jdbc.trino.Query
+    url: jdbc:trino://trino.internal:443/iceberg/security
+    username: "{{ inputs.run_as }}"
+    sql: |
+      INSERT INTO iceberg.security.exec_briefs (run_date, agent_id, brief)
+      VALUES (current_date, '{{ inputs.agent_id }}',
+              '{{ json(outputs.plexus_brief.body).answer | replace("'", "''") }}')
+
+  # 5) notify
+  - id: notify
+    type: io.kestra.plugin.notifications.slack.SlackIncomingWebhook
+    url: "{{ secret('SLACK_SECOPS_WEBHOOK') }}"
+    payload: |
+      {"text": "🛡️ Daily incident brief ready — {{ json(outputs.plexus_brief.body).answer | slice(0,280) }}"}
+
+# Bidirectional: the Plexus agent called above can, mid-reasoning, call BACK into
+# this platform via MCP — dbt_run / dbt_test (the DBT MCP server) and
+# trigger_flow / flow_status (the Kestra MCP server). Write tools (dbt_run,
+# trigger_flow, block_ip) are approval-gated in Plexus, so an autonomous agent
+# proposes them and a human approves before they execute.
