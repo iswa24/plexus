@@ -96,6 +96,18 @@ def get_audit(limit: int = 100):
     return audit.recent(limit)
 
 
+@app.get("/api/runs")
+def list_runs(limit: int = 50, app_id: str | None = None):
+    """Execution history grouped by run (for the Executions UI)."""
+    return audit.runs(limit, app_id)
+
+
+@app.get("/api/runs/{run_id}")
+def get_run(run_id: str):
+    """Per-node detail for one execution."""
+    return audit.run(run_id)
+
+
 # ---------------------------------------------------------------- run helpers + saved app
 def _pick(results: dict, app_def) -> str:
     types = {n.id: n.type for n in app_def.nodes}

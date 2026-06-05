@@ -456,7 +456,7 @@ async def execute(
                 if audit:
                     audit.log(principal=principal.username, app_id=app.id or "",
                               run_id=run_id, node_id=node.id, node_type=node.type,
-                              detail={"config": node.config})
+                              detail={"config": node.config, "status": "done", "ms": ms})
                 return out
             except Exception as exc:
                 last = str(exc)
@@ -466,6 +466,10 @@ async def execute(
                                 "output": {"kind": "text", "value": f"⟳ retry {attempt}/{tries - 1} after error: {last}"}})
                     await asyncio.sleep(wait)
         await emit({"event": "node", "runId": run_id, "nodeId": node.id, "status": "error", "error": last})
+        if audit:
+            audit.log(principal=principal.username, app_id=app.id or "",
+                      run_id=run_id, node_id=node.id, node_type=node.type,
+                      detail={"config": node.config, "status": "error", "error": last})
         return {"kind": "text", "value": "", "error": last}
 
     while True:

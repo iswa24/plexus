@@ -234,6 +234,15 @@
     border-bottom-width:2px;border-radius:6px;background:var(--panel2);color:var(--text);font-size:12px;font-family:monospace}
   .help-row{display:flex;justify-content:space-between;align-items:center;padding:7px 2px;border-bottom:1px solid rgba(255,255,255,.04)}
   .help-row span{color:var(--muted)}
+  .runrow{display:flex;align-items:center;gap:11px;padding:10px 8px;border-radius:9px;cursor:pointer;border-bottom:1px solid rgba(255,255,255,.04)}
+  .runrow:hover{background:rgba(129,140,248,.10)}
+  .rundot{width:9px;height:9px;border-radius:50%;flex:none}
+  .runmeta{flex:1;min-width:0}
+  .runtop{font-size:13px;color:var(--text);font-family:monospace}.runtop small{color:var(--muted);margin-left:8px;font-family:inherit}
+  .runsub{font-size:11.5px;color:var(--muted);margin-top:2px}
+  .runtypes{font-size:10.5px;color:var(--accent2);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .runchev{color:var(--muted);font-size:18px}
+  .rundetail-head{display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap}
   .modal{width:560px;max-width:92vw;max-height:78vh;background:var(--panel);border:1px solid var(--line);
     border-radius:14px;box-shadow:0 24px 70px rgba(0,0,0,.6);display:flex;flex-direction:column;overflow:hidden}
   .modal-head{display:flex;align-items:center;padding:15px 18px;border-bottom:1px solid var(--line)}
@@ -431,6 +440,7 @@
     <button class="btn ghost" onclick="loadSample()">↻ Sample</button>
     <button class="btn save" id="saveBtn" onclick="saveCurrentApp()">💾 Save</button>
     <button class="btn ghost" onclick="openLibrary()">📁 My Apps</button>
+    <button class="btn ghost" onclick="openRuns()" title="Execution history">🕘 Runs</button>
     <button class="btn ghost" onclick="exportApp()">⤓ Export</button>
     <button class="btn ghost" onclick="document.getElementById('importFile').click()">⤒ Import</button>
     <input type="file" id="importFile" accept=".json" style="display:none" onchange="importApp(event)"/>
@@ -490,6 +500,19 @@
         <button class="btn ghost" onclick="closeLibrary()">✕</button>
       </div>
       <div class="modal-body" id="libList"></div>
+    </div>
+  </div>
+
+  <!-- Executions history -->
+  <div class="modal-bg" id="runsModal" onclick="if(event.target===this)closeRuns()">
+    <div class="modal">
+      <div class="modal-head"><h3>🕘 Executions</h3>
+        <div style="margin-left:auto;display:flex;gap:8px">
+          <button class="btn ghost" id="runsScope" onclick="toggleRunsScope()">This app</button>
+          <button class="btn ghost" onclick="closeRuns()">✕</button>
+        </div>
+      </div>
+      <div class="modal-body" id="runsBody"></div>
     </div>
   </div>
 
@@ -1293,7 +1316,7 @@ document.addEventListener('keydown',e=>{
   if(meta && e.key.toLowerCase()==='z' && !typing){ e.preventDefault(); e.shiftKey?redo():undo(); return; }
   if(meta && e.key.toLowerCase()==='y' && !typing){ e.preventDefault(); redo(); return; }
   if(e.key==='?' && !typing){ e.preventDefault(); openHelp(); return; }
-  if(e.key==='Escape'){ closePalette(); closeHelp(); }
+  if(e.key==='Escape'){ closePalette(); closeHelp(); closeRuns(); }
   if((e.key==='Delete'||e.key==='Backspace')&&state.sel&&!typing){ deleteNode(state.sel); }
 });
 window.addEventListener('beforeunload',e=>{ if(state.dirty){ e.preventDefault(); e.returnValue=''; } });
@@ -2123,6 +2146,7 @@ function paletteCommands(){
     {label:'Generate flow from a prompt', hint:'✨', act:()=>openGenerate()},
     {label:'New app', hint:'', act:()=>newApp()},
     {label:'My apps / library', hint:'', act:()=>openLibrary()},
+    {label:'Executions history', hint:'🕘', act:()=>openRuns()},
     {label:'Fit view to flow', hint:'', act:()=>resetView()},
     {label:'Undo', hint:'⌘Z', act:()=>undo()},
     {label:'Redo', hint:'⌘⇧Z', act:()=>redo()},
@@ -2191,6 +2215,45 @@ function newApp(){
 
 function openLibrary(){ document.getElementById('libModal').classList.add('show'); renderLibrary(); }
 function closeLibrary(){ document.getElementById('libModal').classList.remove('show'); }
+
+/* ---- Executions history ---- */
+let _runsScope='app';
+function openRuns(){ document.getElementById('runsModal').classList.add('show'); renderRuns(); }
+function closeRuns(){ document.getElementById('runsModal').classList.remove('show'); }
+function toggleRunsScope(){ _runsScope=_runsScope==='app'?'all':'app';
+  document.getElementById('runsScope').textContent=_runsScope==='app'?'This app':'All apps'; renderRuns(); }
+async function renderRuns(){
+  const body=document.getElementById('runsBody'); body.innerHTML='<div class="applist-empty">Loading…</div>';
+  let runs=[];
+  try{ const q=(_runsScope==='app'&&state.appId)?('?app_id='+encodeURIComponent(state.appId)):''; runs=await apiJSON('/api/runs'+q); }
+  catch(e){ body.innerHTML='<div class="applist-empty">⚠ Cannot reach the backend.</div>'; return; }
+  if(!runs.length){ body.innerHTML='<div class="applist-empty">No executions yet.<br/>Run a flow (▶) and it shows up here.</div>'; return; }
+  body.innerHTML=runs.map(r=>{
+    const ok=r.status!=='error', dot=ok?'#22c55e':'#ef4444';
+    const types=[...new Set(r.types||[])].slice(0,6).join(' · ');
+    return `<div class="runrow" onclick="openRunDetail('${esc(r.run_id)}')">
+      <span class="rundot" style="background:${dot}"></span>
+      <div class="runmeta"><div class="runtop">${esc(r.run_id)} <small>${esc(relTime(r.started))}</small></div>
+        <div class="runsub">${r.nodes} nodes · ${esc(r.principal||'')}${r.errors?` · <b style="color:#ef4444">${r.errors} error(s)</b>`:''}</div>
+        <div class="runtypes">${esc(types)}</div></div>
+      <span class="runchev">›</span></div>`;
+  }).join('');
+}
+async function openRunDetail(rid){
+  const body=document.getElementById('runsBody'); body.innerHTML='<div class="applist-empty">Loading…</div>';
+  let rows=[]; try{ rows=await apiJSON('/api/runs/'+rid); }catch(e){}
+  const appId=(rows[0]||{}).app_id;
+  let h=`<div class="rundetail-head"><button class="btn ghost" onclick="renderRuns()">‹ Back</button>`+
+    `<b style="font-family:monospace">${esc(rid)}</b>`+
+    (appId?`<button class="btn ghost" onclick="debugInEditor('${esc(appId)}')">🛠 Debug in editor</button>`:'')+`</div>`;
+  h+=rows.map(r=>{ const st=(r.detail&&r.detail.status)||'done', ok=st!=='error';
+    return `<div class="runrow" style="cursor:default"><span class="rundot" style="background:${ok?'#22c55e':'#ef4444'}"></span>
+      <div class="runmeta"><div class="runtop">${esc(r.node_id)} <small>${esc(r.node_type)}</small></div>
+        <div class="runsub">${esc(st)}${r.detail&&r.detail.ms!=null?' · '+r.detail.ms+'ms':''}${r.detail&&r.detail.error?` · <span style="color:#ef4444">${esc(r.detail.error)}</span>`:''}</div></div></div>`;
+  }).join('')||'<div class="applist-empty">No node detail recorded.</div>';
+  body.innerHTML=h;
+}
+async function debugInEditor(appId){ closeRuns(); state.dirty=false; await openApp(appId); setMode('builder'); if(typeof toast==='function') toast('Loaded into editor — edit & re-run'); }
 
 async function renderLibrary(){
   const list=document.getElementById('libList');

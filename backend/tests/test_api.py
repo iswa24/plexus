@@ -101,3 +101,17 @@ def test_cache_answer_roundtrip_makes_next_ask_free():
     assert r2["cached"] == "semantic"
     assert r2["run_cost"] == 0.0
     assert r2["answer"] == "42"
+
+
+def test_runs_history_groups_executions():
+    """Running an app records an execution visible via /api/runs + /api/runs/{id}."""
+    app = {"name": "Runs Demo", "nodes": [
+        {"id": "q", "type": "input.text", "config": {"value": "hi"}},
+        {"id": "o", "type": "output.text", "config": {"template": "@{q}"}},
+    ], "edges": [{"id": "e", "source": "q", "target": "o"}]}
+    aid = client.post("/api/apps", json=app).json()["id"]
+    client.post(f"/api/apps/{aid}/run", json={"inputs": {}})
+    runs = client.get(f"/api/runs?app_id={aid}").json()
+    assert runs and runs[0]["nodes"] >= 1 and runs[0]["status"] in ("success", "error")
+    detail = client.get(f"/api/runs/{runs[0]['run_id']}").json()
+    assert any(r["node_type"] == "output.text" for r in detail)
