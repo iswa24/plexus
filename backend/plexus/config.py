@@ -27,6 +27,17 @@ class Settings(BaseSettings):
     anthropic_api_key: str = ""
     anthropic_model: str = "claude-sonnet-4-5"
 
+    # --- Azure OpenAI ---
+    # Endpoint like https://<resource>.openai.azure.com/. Auth is either an API key
+    # OR Entra ID (managed identity / workload identity) — the enterprise path, which
+    # also enables OBO. Leave azure_api_key blank and set azure_use_entra=true to use
+    # DefaultAzureCredential.
+    azure_endpoint: str = ""
+    azure_api_key: str = ""
+    azure_api_version: str = "2024-10-21"
+    azure_deployment: str = ""          # the deployment name = the model id
+    azure_use_entra: bool = False       # use DefaultAzureCredential instead of a key
+
     # NL2SQL model provider: "claudecode" (local CLI / Max sub, no key) or "anthropic" (API key)
     nl2sql_provider: str = "claudecode"
 

@@ -11,3 +11,5 @@ neo4j>=5.18
 trino>=0.328
 anthropic>=0.40       # direct Anthropic API (NL2SQL agent)
 mcp>=1.0
+openai>=1.40
+azure-identity>=1.17  # only needed for Entra ID (azure_use_entra)

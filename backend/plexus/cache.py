@@ -20,8 +20,10 @@ _CACHE: dict[str, dict] = {}          # exact model-call cache
 STATS = {"hits": 0, "misses": 0, "input_tokens": 0, "output_tokens": 0,
          "cost_usd": 0.0, "saved_usd": 0.0, "sem_hits": 0, "sem_saved": 0.0}
 
-# approx USD per 1M tokens (input, output) — adjust to your Bedrock/Anthropic rates
-_PRICE = {"haiku": (0.80, 4.0), "sonnet": (3.0, 15.0), "opus": (15.0, 75.0)}
+# approx USD per 1M tokens (input, output) — adjust to your Bedrock/Anthropic/Azure rates
+_PRICE = {"haiku": (0.80, 4.0), "sonnet": (3.0, 15.0), "opus": (15.0, 75.0),
+          "gpt-4o-mini": (0.15, 0.60), "gpt-4o": (2.50, 10.0),
+          "gpt-4": (30.0, 60.0), "gpt-35": (0.50, 1.50), "gpt-3.5": (0.50, 1.50)}
 
 
 def _price(model: str):

@@ -660,7 +660,7 @@ const TYPES = {
       {k:'schema', t:'text', label:'Trino schema (source=trino)'},
       {k:'tables', t:'text', label:'Tables allow-list (comma; blank = auto-scope)'},
       {k:'maxSchemaTables', t:'number', label:'Auto-scope threshold (tables)'},
-      {k:'provider', t:'select', label:'Model provider', options:['bedrock','claudecode','anthropic']},
+      {k:'provider', t:'select', label:'Model provider', options:['bedrock','claudecode','anthropic','azure']},
       {k:'modelId', t:'select', label:'Model (auto = router picks per question)', options:[
         'auto',
         'claude-opus-4-1',
@@ -678,7 +678,7 @@ const TYPES = {
     defaults:{ provider:'claudecode', modelId:'auto', input:'@{alert}',
       categories:'Phishing, Malware, Unauthorized Access, Data Loss, Policy Violation, Other' },
     fields:[
-      {k:'provider', t:'select', label:'Model provider', options:['bedrock','claudecode','anthropic']},
+      {k:'provider', t:'select', label:'Model provider', options:['bedrock','claudecode','anthropic','azure']},
       {k:'modelId', t:'select', label:'Model', options:['auto','claude-opus-4-1','claude-sonnet-4-5','claude-3-5-haiku-latest']},
       {k:'input', t:'textarea', refs:true, label:'Text to classify (type @ to reference a card)'},
       {k:'categories', t:'text', label:'Categories (comma separated)'},
@@ -690,7 +690,7 @@ const TYPES = {
     cat:'Sub-agents', name:'Detection Rule Agent', icon:'🛡', color:'#ef4444',
     defaults:{ provider:'claudecode', modelId:'claude-sonnet-4-5', behavior:'@{behavior}', target:'Sigma' },
     fields:[
-      {k:'provider', t:'select', label:'Model provider', options:['bedrock','claudecode','anthropic']},
+      {k:'provider', t:'select', label:'Model provider', options:['bedrock','claudecode','anthropic','azure']},
       {k:'modelId', t:'select', label:'Model', options:['auto','claude-opus-4-1','claude-sonnet-4-5','claude-3-5-haiku-latest']},
       {k:'behavior', t:'textarea', refs:true, label:'Behavior to detect (type @ to reference a card)'},
       {k:'target', t:'select', label:'Rule format', options:['Sigma','Splunk SPL','SQL','KQL']},
@@ -702,7 +702,7 @@ const TYPES = {
     cat:'Sub-agents', name:'Graph Agent (NL→Cypher)', icon:'🕸', color:'#22c55e',
     defaults:{ provider:'claudecode', modelId:'auto', goal:'@{question}', graphModel:'' },
     fields:[
-      {k:'provider', t:'select', label:'Model provider', options:['bedrock','claudecode','anthropic']},
+      {k:'provider', t:'select', label:'Model provider', options:['bedrock','claudecode','anthropic','azure']},
       {k:'modelId', t:'select', label:'Model', options:['auto','claude-opus-4-1','claude-sonnet-4-5','claude-3-5-haiku-latest']},
       {k:'goal', t:'textarea', refs:true, label:'Question (natural language → Cypher)'},
       {k:'graphModel', t:'textarea', label:'Graph model (blank = default security graph)'},
@@ -714,7 +714,7 @@ const TYPES = {
     cat:'Sub-agents', name:'RAG Knowledge Agent', icon:'📚', color:'#8b5cf6',
     defaults:{ provider:'claudecode', modelId:'auto', goal:'@{question}', topK:4 },
     fields:[
-      {k:'provider', t:'select', label:'Model provider', options:['bedrock','claudecode','anthropic']},
+      {k:'provider', t:'select', label:'Model provider', options:['bedrock','claudecode','anthropic','azure']},
       {k:'modelId', t:'select', label:'Model', options:['auto','claude-opus-4-1','claude-sonnet-4-5','claude-3-5-haiku-latest']},
       {k:'goal', t:'textarea', refs:true, label:'Question (answered from the knowledge base)'},
       {k:'topK', t:'number', label:'Passages to retrieve (top-k)'},
@@ -726,7 +726,7 @@ const TYPES = {
     cat:'Sub-agents', name:'Prompt Agent', icon:'✍', color:'#a855f7',
     defaults:{ provider:'claudecode', modelId:'auto', system:'You are a senior security analyst. Be concise and actionable.', goal:'@{question}' },
     fields:[
-      {k:'provider', t:'select', label:'Model provider', options:['bedrock','claudecode','anthropic']},
+      {k:'provider', t:'select', label:'Model provider', options:['bedrock','claudecode','anthropic','azure']},
       {k:'modelId', t:'select', label:'Model', options:['auto','claude-opus-4-1','claude-sonnet-4-5','claude-3-5-haiku-latest']},
       {k:'system', t:'textarea', label:'System prompt (the agent\'s role/skill)'},
       {k:'goal', t:'textarea', refs:true, label:'Task / input (type @ to reference cards)'},

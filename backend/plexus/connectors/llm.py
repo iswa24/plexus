@@ -29,6 +29,7 @@ def model_name(config, ctx) -> str:
         "claudecode": "claude-sonnet-4-5",
         "bedrock": ctx.settings.bedrock_default_model,
         "anthropic": ctx.settings.anthropic_model,
+        "azure": ctx.settings.azure_deployment,
     }.get(p, "claude-sonnet-4-5")
 
 
@@ -38,6 +39,9 @@ def available(config, ctx) -> bool:
         return claudecli.available()
     if p == "bedrock":
         return True  # assume IAM is present; the call errors clearly if not
+    if p == "azure":
+        s = ctx.settings
+        return bool(s.azure_endpoint and (s.azure_api_key or s.azure_use_entra))
     return bool(ctx.settings.anthropic_api_key)
 
 
@@ -74,6 +78,41 @@ async def _bedrock_complete(prompt, system, model, settings) -> str:
     return await cache.cached_call("bedrock", model, system or "", prompt, _call)
 
 
+async def _azure_complete(prompt, system, model, settings) -> str:
+    from .. import cache  # local import to avoid cycles
+
+    async def _call():
+        try:
+            from openai import AzureOpenAI  # noqa: WPS433 (lazy import by design)
+        except ImportError as e:  # pragma: no cover
+            raise RuntimeError("openai SDK not installed. `pip install openai`.") from e
+        kw = {"azure_endpoint": settings.azure_endpoint, "api_version": settings.azure_api_version}
+        if settings.azure_use_entra and not settings.azure_api_key:
+            try:
+                from azure.identity import DefaultAzureCredential, get_bearer_token_provider
+            except ImportError as e:  # pragma: no cover
+                raise RuntimeError(
+                    "azure-identity not installed for Entra ID auth. `pip install azure-identity`."
+                ) from e
+            kw["azure_ad_token_provider"] = get_bearer_token_provider(
+                DefaultAzureCredential(), "https://cognitiveservices.azure.com/.default")
+        else:
+            kw["api_key"] = settings.azure_api_key
+        client = AzureOpenAI(**kw)
+        messages = ([{"role": "system", "content": system}] if system else []) + \
+                   [{"role": "user", "content": prompt}]
+        resp = await asyncio.to_thread(
+            client.chat.completions.create, model=model, messages=messages,
+            temperature=0.2, max_tokens=1500)
+        text = (resp.choices[0].message.content or "").strip()
+        u = getattr(resp, "usage", None)
+        it = getattr(u, "prompt_tokens", 0) or 0
+        ot = getattr(u, "completion_tokens", 0) or 0
+        return (text, it, ot, cache.cost_of(model, it, ot))
+
+    return await cache.cached_call("azure", model, system or "", prompt, _call)
+
+
 async def complete(prompt: str, system: str, config: dict, ctx) -> str | None:
     """Provider-agnostic single completion. Returns None if no provider available."""
     p = provider_name(config, ctx)
@@ -82,6 +121,10 @@ async def complete(prompt: str, system: str, config: dict, ctx) -> str | None:
         return await claudecli.claude_run(prompt, system=system, model=claudecli.cli_model(m))
     if p == "bedrock":
         return await _bedrock_complete(prompt, system, m if (m and m != "auto") else ctx.settings.bedrock_default_model, ctx.settings)
+    if p == "azure":
+        if not available(config, ctx):
+            return None
+        return await _azure_complete(prompt, system, m if (m and m != "auto") else ctx.settings.azure_deployment, ctx.settings)
     if ctx.settings.anthropic_api_key:
         from .. import cache  # local import to avoid cycles
         amodel = m if (m and m != "auto") else ctx.settings.anthropic_model
