@@ -839,7 +839,12 @@ function shortModel(m){ if(!m)return'';
   if(base.startsWith('claude')) base=base.replace(/^claude-?/,'Claude ');
   return base.replace(/-/g,' ').replace(/\s+/g,' ').trim()||m; }
 function esc(s){ return (s+'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
-function cssVar(v){ return v.startsWith('var(')? getComputedStyle(document.documentElement).getPropertyValue(v.slice(4,-1)).trim() : v; }
+function cssVar(v){
+  if(!v) return v;
+  if(v.startsWith('var(')) return getComputedStyle(document.documentElement).getPropertyValue(v.slice(4,-1)).trim()||v;
+  if(v.startsWith('--')) return getComputedStyle(document.documentElement).getPropertyValue(v).trim()||v;  // bare custom-prop name
+  return v;
+}
 function uid(p){ return p+'_'+(state.idc++).toString(36); }
 
 /* ============================================================
