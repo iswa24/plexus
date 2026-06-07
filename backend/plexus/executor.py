@@ -28,6 +28,10 @@ from .connectors.bedrock import run_bedrock
 from .connectors.classify import run_classify
 from .connectors.cypher import run_cypher
 from .connectors.detection import run_detection
+from .connectors.dbt_triage import run_dbt_triage
+from .connectors.kestra_monitor import run_kestra_monitor
+from .connectors.trino_guard import run_trino_guard
+from .connectors.nl2dbt import run_nl2dbt
 from .connectors.mcp import run_mcp_resource, run_mcp_tool
 from .connectors.prompt_agent import run_prompt
 from .connectors.rag import run_rag
@@ -140,6 +144,8 @@ async def run_node(node: Node, ctx: RunContext, emit: Emit) -> dict[str, Any]:
 
     if t == "source.trino":
         return await run_trino(cfg, ctx, emit)
+    if t == "source.trino_guard":
+        return await run_trino_guard(cfg, ctx, emit)
     if t == "source.neo4j":
         return await run_neo4j(cfg, ctx, emit)
     if t == "source.http":
@@ -170,6 +176,12 @@ async def run_node(node: Node, ctx: RunContext, emit: Emit) -> dict[str, Any]:
         return await run_mcp_resource(cfg, ctx, emit)
     if t == "tool.mcp":
         return await run_mcp_tool(cfg, ctx, emit)
+    if t == "dbt.triage":
+        return await run_dbt_triage(cfg, ctx, emit)
+    if t == "kestra.monitor":
+        return await run_kestra_monitor(cfg, ctx, emit)
+    if t == "dbt.generate":
+        return await run_nl2dbt(cfg, ctx, emit)
     if t in _BRANDED:
         return await _run_branded(t, cfg, ctx, emit)
     if t == "flow.branch":

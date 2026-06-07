@@ -727,6 +727,22 @@ const TYPES = {
     summary:n=>'🗄 '+(connName(n.config.connectionId)||(n.config.catalog||'')+'.'+(n.config.schema||'')||'default')+'\n'+oneline(n.config.sql),
     badge:'OAuth · OBO',
   },
+  'source.trino_guard': {
+    cat:'Source', name:'Trino Query (cost-guarded)', icon:'🛡', color:'var(--amber)',
+    defaults:{connectionId:'', catalog:'', schema:'', maxScanRows:1000000, maxRows:500, approved:false,
+      sql:"SELECT * FROM events"},
+    fields:[
+      {k:'connectionId', t:'connsel', kind:'trino', label:'Trino connection (remote client)'},
+      {k:'catalog', t:'text', label:'Catalog (blank = connection default)'},
+      {k:'schema', t:'text', label:'Schema (blank = connection default)'},
+      {k:'sql', t:'textarea', code:true, refs:true, label:'SQL (cost-checked before it runs)'},
+      {k:'maxScanRows', t:'number', label:'Block above (estimated scanned rows)'},
+      {k:'maxRows', t:'number', label:'Max rows returned'},
+      {k:'approved', t:'checks', label:'Approve override (run even if over the limit)', options:['approved']},
+    ],
+    summary:n=>'🛡 cost-guard · '+(connName(n.config.connectionId)||'trino')+'\n'+oneline(n.config.sql),
+    badge:'governance · gated',
+  },
   'source.neo4j': {
     cat:'Source', name:'Neo4j (Cypher)', icon:'🕸', color:'var(--green)',
     defaults:{query:"MATCH (i:Incident)-[r]-(e)\nWHERE i.id IN @{incidents}\nRETURN e.name AS entity, labels(e)[0] AS type, type(r) AS rel\nLIMIT 50"},
@@ -956,6 +972,21 @@ const TYPES = {
     defaults:{}, fields:[{k:'maxRows', t:'number', label:'Max rows'}],
     summary:n=>'🧱 dbt · list models on Iceberg', badge:'dbt · read',
   },
+  'dbt.generate': {
+    cat:'Data Ops', name:'dbt · Generate Model (NL)', icon:'✨', color:'#F2682A',
+    defaults:{ goal:'@{question}', modelName:'fct_new', materialized:'view', source:'trino', connectionId:'', provider:'bedrock', modelId:'auto' },
+    fields:[
+      {k:'goal', t:'textarea', refs:true, label:'What should the model do? (natural language)'},
+      {k:'modelName', t:'text', label:'Model name'},
+      {k:'materialized', t:'select', label:'Materialization', options:['view','table','incremental']},
+      {k:'source', t:'select', label:'Ground on schema from', options:['none','sqlite','trino']},
+      {k:'connectionId', t:'connsel', kind:'trino', label:'Trino connection (when source=trino)'},
+      {k:'provider', t:'select', label:'AI provider', options:['bedrock','azure','claudecode','anthropic']},
+      {k:'modelId', t:'select', label:'Model', options:['auto','claude-sonnet-4-5','claude-3-5-haiku-latest']},
+    ],
+    summary:n=>'✨ dbt · generate '+(n.config.modelName||'model')+' from NL',
+    badge:'dbt · NL→code',
+  },
   'dbt.lineage': {
     cat:'Data Ops', name:'dbt · Lineage', icon:'🧱', color:'#F2682A',
     defaults:{model:'fct_open_p1'}, fields:[{k:'model', t:'text', refs:true, label:'Model'}],
@@ -965,6 +996,17 @@ const TYPES = {
     cat:'Data Ops', name:'dbt · Test', icon:'🧱', color:'#F2682A',
     defaults:{model:''}, fields:[{k:'model', t:'text', refs:true, label:'Models (select; blank = all)'}],
     summary:n=>'🧱 dbt · test '+(n.config.model||'all'), badge:'dbt · read',
+  },
+  'dbt.triage': {
+    cat:'Data Ops', name:'dbt · Test Triage', icon:'🧪', color:'#F2682A',
+    defaults:{model:'', provider:'bedrock', modelId:'auto'},
+    fields:[
+      {k:'model', t:'text', refs:true, label:'Model (blank = all)'},
+      {k:'provider', t:'select', label:'AI provider', options:['bedrock','azure','claudecode','anthropic']},
+      {k:'modelId', t:'select', label:'Model', options:['auto','claude-sonnet-4-5','claude-3-5-haiku-latest']},
+    ],
+    summary:n=>'🧪 dbt test triage · '+(n.config.model||'all'),
+    badge:'dbt · AI triage',
   },
   'dbt.run': {
     cat:'Data Ops', name:'dbt · Run (build)', icon:'🧱', color:'#F2682A',
@@ -984,6 +1026,18 @@ const TYPES = {
     cat:'Data Ops', name:'Kestra · Status', icon:'🧭', color:'#7C4DFF',
     defaults:{executionId:''}, fields:[{k:'executionId', t:'text', refs:true, label:'Execution id'}],
     summary:n=>'🧭 Kestra · status', badge:'kestra · read',
+  },
+  'kestra.monitor': {
+    cat:'Data Ops', name:'Kestra · Monitor + Alert', icon:'🚨', color:'#7C4DFF',
+    defaults:{namespace:'company.team', limit:25, provider:'bedrock', modelId:'auto'},
+    fields:[
+      {k:'namespace', t:'text', label:'Namespace'},
+      {k:'limit', t:'number', label:'Recent executions to scan'},
+      {k:'provider', t:'select', label:'AI provider', options:['bedrock','azure','claudecode','anthropic']},
+      {k:'modelId', t:'select', label:'Model', options:['auto','claude-sonnet-4-5','claude-3-5-haiku-latest']},
+    ],
+    summary:n=>'🚨 Kestra · monitor '+(n.config.namespace||'')+' executions',
+    badge:'kestra · AI alert',
   },
   'kestra.trigger': {
     cat:'Data Ops', name:'Kestra · Trigger Flow', icon:'🧭', color:'#7C4DFF',

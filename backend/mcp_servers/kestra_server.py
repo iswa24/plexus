@@ -98,6 +98,28 @@ def list_flows(namespace: str = "") -> str:
 
 
 @mcp.tool()
+def list_executions(namespace: str = "", limit: int = 25) -> str:
+    """List recent Kestra executions in a namespace with their state. JSON rows:
+    [{executionId, flow, state, startDate}]. Use to monitor pipeline health."""
+    ns = namespace or DEFAULT_NS
+    if not LIVE:
+        return json.dumps([
+            {"executionId": "exec_2026060706", "flow": "daily_incident_brief", "state": "SUCCESS", "startDate": "2026-06-07T06:00:02Z"},
+            {"executionId": "exec_2026060705", "flow": "ioc_sweep", "state": "FAILED", "startDate": "2026-06-07T05:30:00Z"},
+            {"executionId": "exec_2026060704", "flow": "ioc_sweep", "state": "FAILED", "startDate": "2026-06-07T05:00:00Z"},
+            {"executionId": "exec_2026060703", "flow": "remediation", "state": "SUCCESS", "startDate": "2026-06-07T04:12:00Z"},
+            {"executionId": "exec_2026060702", "flow": "daily_incident_brief", "state": "SUCCESS", "startDate": "2026-06-06T06:00:01Z"},
+            {"executionId": "exec_2026060701", "flow": "ioc_sweep", "state": "RUNNING", "startDate": "2026-06-07T05:58:00Z"},
+        ][:limit])
+    res = _http("GET", f"/executions/search?namespace={ns}&size={int(limit)}&sort=state.startDate:desc")
+    rows = [{"executionId": e.get("id"), "flow": e.get("flowId"),
+             "state": (e.get("state") or {}).get("current", "UNKNOWN"),
+             "startDate": (e.get("state") or {}).get("startDate")}
+            for e in (res.get("results", res) if isinstance(res, dict) else res or [])]
+    return json.dumps(rows)
+
+
+@mcp.tool()
 def flow_status(execution_id: str) -> str:
     """Return the status of a Kestra execution. JSON {executionId, state, namespace, flow}."""
     if not LIVE:
