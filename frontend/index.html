@@ -470,7 +470,7 @@
       <button id="modeBuild" class="mode-opt" onclick="setMode('builder')">🛠 Builder</button>
     </div>
     <span class="usage-meter" id="usageMeter" title="Token usage · model cost · cache hits (saved)"></span>
-    <input class="app-name" id="appName" value="Incident Triage Assistant" oninput="markDirty()" />
+    <input class="app-name" id="appName" value="Untitled agent" oninput="markDirty()" />
     <span class="saved-tag" id="savedTag"></span>
     <div class="spacer"></div>
     <span class="provider-pick" title="AI provider for the agents (applies to all AI Agent nodes)">
@@ -2310,6 +2310,7 @@ function paletteCommands(){
     {label:'Save app', hint:'⌘S', act:()=>saveCurrentApp()},
     {label:'Generate flow from a prompt', hint:'✨', act:()=>openGenerate()},
     {label:'New app', hint:'', act:()=>newApp()},
+    {label:'Load sample flow', hint:'', act:()=>loadSample()},
     {label:'My apps / library', hint:'', act:()=>openLibrary()},
     {label:'Executions history', hint:'🕘', act:()=>openRuns()},
     {label:'Connections / settings', hint:'⚙', act:()=>openSettings()},
@@ -2601,6 +2602,11 @@ function toast(msg){ const t=document.getElementById('toast'); t.textContent=msg
 /* ============================================================
    SAMPLE APP (the demo flow)
    ============================================================ */
+function blankWorkspace(){
+  state.nodes=[]; state.edges=[]; state.results={}; state.sel=null; state.appId=null; state.savedAt=null; state.idc=1;
+  document.getElementById('appName').value='Untitled agent';
+  render(); renderInspector(); resetView(); markClean(); resetHistory();
+}
 function loadSample(){
   state.nodes=[]; state.edges=[]; state.results={}; state.idc=1;
   const q=addNodeAt('input.text',40,140,{label:'Question',placeholder:'Ask…',value:'P1 phishing incidents in the last 24h'});
@@ -2647,7 +2653,7 @@ function boot(){
   loadMcpServers();    // populate the MCP server picker for source.mcp / tool.mcp
   loadConnections();   // populate the remote-client connection pickers
   loadAppConfig();     // populate the topbar AI-provider picker
-  loadSample();        // a flow waits in the builder
+  blankWorkspace();    // start with an empty canvas (no default flow)
   setMode('chat');     // consumers land in Chat; engineers toggle to 🛠 Builder
   refreshUsage(); setInterval(refreshUsage, 4000);
 }
