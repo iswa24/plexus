@@ -1156,8 +1156,10 @@ function renderNode(node){
 
   // node select + drag (from header)
   const head=el.querySelector('.nhead');
-  head.addEventListener('mousedown',e=>{ if(e.target.classList.contains('port'))return; startNodeDrag(e,node,el); });
-  el.addEventListener('mousedown',()=>select(node.id));
+  head.addEventListener('mousedown',e=>{ if(e.target.classList.contains('port'))return;
+    e.stopPropagation();                 // don't also fire el's select()->render() (would detach the dragged card)
+    startNodeDrag(e,node,el); });
+  el.addEventListener('mousedown',e=>{ if(e.target.classList.contains('port'))return; select(node.id); });
   // ports
   el.querySelector('.port.out').addEventListener('mousedown',e=>{ e.stopPropagation(); startWire(e,node); });
 }
@@ -1252,11 +1254,17 @@ function drawEdges(){
    ============================================================ */
 function startNodeDrag(e,node,el){
   e.preventDefault();
+  // light-select without a full render() (which would detach this element mid-drag)
+  if(state.sel!==node.id){ state.sel=node.id;
+    document.querySelectorAll('.node.sel').forEach(x=>x.classList.remove('sel'));
+    el.classList.add('sel'); renderInspector(); }
   const start=screenToWorld(e.clientX,e.clientY), ox=node.x-start.x, oy=node.y-start.y;
+  let moved=false;
   function mv(ev){ const w=screenToWorld(ev.clientX,ev.clientY);
     node.x=Math.round(w.x+ox); node.y=Math.round(w.y+oy);
-    el.style.left=node.x+'px'; el.style.top=node.y+'px'; drawEdges(); }
-  function up(){ markDirty(); document.removeEventListener('mousemove',mv); document.removeEventListener('mouseup',up); }
+    const cur=document.querySelector(`.node[data-id="${node.id}"]`)||el;   // re-query in case DOM changed
+    cur.style.left=node.x+'px'; cur.style.top=node.y+'px'; moved=true; drawEdges(); }
+  function up(){ if(moved) markDirty(); document.removeEventListener('mousemove',mv); document.removeEventListener('mouseup',up); }
   document.addEventListener('mousemove',mv); document.addEventListener('mouseup',up);
 }
 
