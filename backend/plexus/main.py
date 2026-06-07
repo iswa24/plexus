@@ -31,6 +31,8 @@ app.add_middleware(
 
 registry = Registry(settings.db_path)
 audit = AuditLog(settings.db_path)
+from .connections import Connections  # noqa: E402
+connections = Connections(settings.db_path, demo_mode=settings.demo_mode)
 
 
 # ---------------------------------------------------------------- health
@@ -94,6 +96,45 @@ def delete_app(app_id: str):
 @app.get("/api/audit")
 def get_audit(limit: int = 100):
     return audit.recent(limit)
+
+
+# ---------------------------------------------------------------- connections
+@app.get("/api/connections")
+def list_connections():
+    return connections.list()
+
+
+@app.post("/api/connections")
+def create_connection(body: dict):
+    return connections.create(body or {})
+
+
+@app.get("/api/connections/{cid}")
+def get_connection(cid: str):
+    c = connections.get(cid)
+    if not c:
+        raise HTTPException(status_code=404, detail="connection not found")
+    return c
+
+
+@app.put("/api/connections/{cid}")
+def update_connection(cid: str, body: dict):
+    c = connections.update(cid, body or {})
+    if not c:
+        raise HTTPException(status_code=404, detail="connection not found")
+    return c
+
+
+@app.delete("/api/connections/{cid}")
+def delete_connection(cid: str):
+    connections.delete(cid)
+    return {"ok": True}
+
+
+@app.post("/api/connections/{cid}/test")
+async def test_connection(cid: str, request: Request):
+    principal = principal_from_headers({k.lower(): v for k, v in request.headers.items()})
+    return await connections.test(cid, principal)
 
 
 @app.get("/api/runs")

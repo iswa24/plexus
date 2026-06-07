@@ -252,6 +252,21 @@
   .runtypes{font-size:10.5px;color:var(--accent2);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .runchev{color:var(--muted);font-size:18px}
   .rundetail-head{display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap}
+  .reflink{color:var(--accent2);cursor:pointer;text-decoration:underline}
+  .conn-row{display:flex;align-items:center;gap:10px;padding:11px 10px;border:1px solid var(--line);
+    border-radius:10px;margin-bottom:9px;background:var(--panel)}
+  .conn-row .ci{width:30px;height:30px;border-radius:8px;display:grid;place-items:center;font-size:15px;
+    background:rgba(245,158,11,.15);color:var(--amber);flex:none}
+  .conn-meta{flex:1;min-width:0}
+  .conn-meta .cl{font-size:13.5px;color:var(--text);font-weight:600}
+  .conn-meta .cd{font-size:11.5px;color:var(--muted);margin-top:2px;font-family:monospace}
+  .conn-test{font-size:11.5px;margin-left:auto}
+  .conn-form{border:1px solid var(--accent2);border-radius:10px;padding:14px;margin-bottom:12px;background:var(--panel)}
+  .conn-form .row{display:flex;gap:10px;margin-bottom:9px}
+  .conn-form .row>div{flex:1}
+  .conn-form label{display:block;font-size:11px;color:var(--muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:.4px}
+  .conn-form input,.conn-form select{width:100%;box-sizing:border-box;background:var(--panel2);
+    border:1px solid var(--line);border-radius:7px;color:var(--text);padding:8px 10px;font-size:13px}
   .modal{width:560px;max-width:92vw;max-height:78vh;background:var(--panel);border:1px solid var(--line);
     border-radius:14px;box-shadow:0 24px 70px rgba(0,0,0,.6);display:flex;flex-direction:column;overflow:hidden}
   .modal-head{display:flex;align-items:center;padding:15px 18px;border-bottom:1px solid var(--line)}
@@ -450,6 +465,7 @@
     <button class="btn save" id="saveBtn" onclick="saveCurrentApp()">💾 Save</button>
     <button class="btn ghost" onclick="openLibrary()">📁 My Apps</button>
     <button class="btn ghost" onclick="openRuns()" title="Execution history">🕘 Runs</button>
+    <button class="btn ghost" onclick="openSettings()" title="Connections & settings">⚙ Settings</button>
     <button class="btn ghost" onclick="exportApp()">⤓ Export</button>
     <button class="btn ghost" onclick="document.getElementById('importFile').click()">⤒ Import</button>
     <input type="file" id="importFile" accept=".json" style="display:none" onchange="importApp(event)"/>
@@ -511,6 +527,19 @@
         <button class="btn ghost" onclick="closeLibrary()">✕</button>
       </div>
       <div class="modal-body" id="libList"></div>
+    </div>
+  </div>
+
+  <!-- Settings · Connections -->
+  <div class="modal-bg" id="settingsModal" onclick="if(event.target===this)closeSettings()">
+    <div class="modal" style="max-width:680px">
+      <div class="modal-head"><h3>⚙ Connections</h3>
+        <div style="margin-left:auto;display:flex;gap:8px">
+          <button class="btn primary" onclick="newConnForm()">＋ New connection</button>
+          <button class="btn ghost" onclick="closeSettings()">✕</button>
+        </div>
+      </div>
+      <div class="modal-body" id="settingsBody"></div>
     </div>
   </div>
 
@@ -628,15 +657,16 @@ const TYPES = {
   },
   'source.trino': {
     cat:'Source', name:'Trino Query', icon:'🗄', color:'var(--amber)',
-    defaults:{catalog:'hive', schema:'security', maxRows:500,
+    defaults:{connectionId:'', catalog:'', schema:'', maxRows:500,
       sql:"SELECT id, severity, owner, ts\nFROM incidents\nWHERE severity = @{severity}\nORDER BY ts DESC"},
     fields:[
-      {k:'catalog', t:'text', label:'Catalog'},
-      {k:'schema', t:'text', label:'Schema'},
+      {k:'connectionId', t:'connsel', kind:'trino', label:'Trino connection (remote client)'},
+      {k:'catalog', t:'text', label:'Catalog (blank = connection default)'},
+      {k:'schema', t:'text', label:'Schema (blank = connection default)'},
       {k:'sql', t:'textarea', code:true, refs:true, label:'SQL (type @ to reference inputs)'},
       {k:'maxRows', t:'number', label:'Max rows'},
     ],
-    summary:n=>(n.config.catalog||'')+'.'+(n.config.schema||'')+'\n'+oneline(n.config.sql),
+    summary:n=>'🗄 '+(connName(n.config.connectionId)||(n.config.catalog||'')+'.'+(n.config.schema||'')||'default')+'\n'+oneline(n.config.sql),
     badge:'OAuth · OBO',
   },
   'source.neo4j': {
@@ -752,11 +782,12 @@ const TYPES = {
   },
   'model.nl2sql': {
     cat:'Sub-agents', name:'NL→SQL Agent', icon:'🧮', color:'#f97316',
-    defaults:{ source:'sqlite', catalog:'', schema:'', tables:'', maxSchemaTables:25, provider:'claudecode', modelId:'claude-sonnet-4-5', goal:'@{question}', maxSteps:6, maxTokens:1500 },
+    defaults:{ source:'sqlite', connectionId:'', catalog:'', schema:'', tables:'', maxSchemaTables:25, provider:'claudecode', modelId:'claude-sonnet-4-5', goal:'@{question}', maxSteps:6, maxTokens:1500 },
     fields:[
       {k:'source', t:'select', label:'Data source', options:['sqlite','trino']},
-      {k:'catalog', t:'text', label:'Trino catalog (source=trino)'},
-      {k:'schema', t:'text', label:'Trino schema (source=trino)'},
+      {k:'connectionId', t:'connsel', kind:'trino', label:'Trino connection (source=trino)'},
+      {k:'catalog', t:'text', label:'Trino catalog (blank = connection default)'},
+      {k:'schema', t:'text', label:'Trino schema (blank = connection default)'},
       {k:'tables', t:'text', label:'Tables allow-list (comma; blank = auto-scope)'},
       {k:'maxSchemaTables', t:'number', label:'Auto-scope threshold (tables)'},
       {k:'provider', t:'select', label:'Model provider', options:['bedrock','claudecode','anthropic','azure']},
@@ -975,6 +1006,11 @@ function agentName(id){ const a=_AGENTS.find(x=>x.id===id); return a?(a.name||a.
 let _MCP_SERVERS=[];
 async function loadMcpServers(){ try{ _MCP_SERVERS=(await apiJSON('/api/mcp/servers')).servers||[]; }catch(e){ _MCP_SERVERS=[]; } }
 function mcpServerName(id){ const s=_MCP_SERVERS.find(x=>x.id===id); return s?(s.label||s.id):''; }
+
+/* Named connections (remote Trino clients etc.) — for the connection picker */
+let _CONNECTIONS=[];
+async function loadConnections(){ try{ _CONNECTIONS=await apiJSON('/api/connections'); }catch(e){ _CONNECTIONS=[]; } }
+function connName(id){ const c=_CONNECTIONS.find(x=>x.id===id); return c?(c.label||c.id):''; }
 
 /* ---------- helpers ---------- */
 function oneline(s){ s=(s||'').replace(/\s+/g,' ').trim(); return s.length>70?s.slice(0,70)+'…':s; }
@@ -1384,7 +1420,7 @@ document.addEventListener('keydown',e=>{
   if(meta && e.key.toLowerCase()==='z' && !typing){ e.preventDefault(); e.shiftKey?redo():undo(); return; }
   if(meta && e.key.toLowerCase()==='y' && !typing){ e.preventDefault(); redo(); return; }
   if(e.key==='?' && !typing){ e.preventDefault(); openHelp(); return; }
-  if(e.key==='Escape'){ closePalette(); closeHelp(); closeRuns(); }
+  if(e.key==='Escape'){ closePalette(); closeHelp(); closeRuns(); closeSettings(); }
   if((e.key==='Delete'||e.key==='Backspace')&&state.sel&&!typing){ deleteNode(state.sel); }
 });
 window.addEventListener('beforeunload',e=>{ if(state.dirty){ e.preventDefault(); e.returnValue=''; } });
@@ -1444,6 +1480,15 @@ function inspParamsHTML(node,d){
       const opts=_MCP_SERVERS.map(s=>`<option value="${esc(s.id)}" ${s.id===v?'selected':''}>${esc(s.label||s.id)}</option>`).join('');
       h+=`<select data-k="${f.k}">${opts||'<option value="demo">Demo MCP server</option>'}</select>`;
       const srv=_MCP_SERVERS.find(s=>s.id===v); if(srv&&srv.tools&&srv.tools.length) h+=`<div class="help">Tools: ${esc(srv.tools.join(', '))}</div>`;
+    } else if(f.t==='connsel'){
+      const kind=f.kind||'trino';
+      const opts=_CONNECTIONS.filter(c=>!kind||c.kind===kind)
+        .map(c=>`<option value="${esc(c.id)}" ${c.id===v?'selected':''}>${esc(c.label||c.id)}</option>`).join('');
+      h+=`<select data-k="${f.k}"><option value="">— default (.env) —</option>${opts}</select>`;
+      const c=_CONNECTIONS.find(x=>x.id===v);
+      if(c) h+=`<div class="help">${esc(c.host||'')}:${esc(c.port||'')} · ${esc(c.catalog||'')}.${esc(c.schema||'')}`+
+               ` <a class="reflink" onclick="testConn('${esc(v)}',this)">test ▷</a></div>`;
+      h+=`<div class="help"><a class="reflink" onclick="openSettings()">＋ manage connections…</a></div>`;
     } else if(f.t==='mcpchecks'){
       const arr=Array.isArray(v)?v:[];
       if(!_MCP_SERVERS.length){ h+=`<div class="help">No MCP servers registered.</div>`; }
@@ -1882,7 +1927,7 @@ function setMode(m){
   document.getElementById('modeChat').classList.toggle('active',m==='chat');
   document.getElementById('modeBuild').classList.toggle('active',m==='builder');
   if(m==='chat'){ ensureChatWelcome(); setTimeout(()=>{const t=document.getElementById('csPrompt');if(t)t.focus();},60); }
-  if(m==='builder'){ Promise.all([loadAgents(), loadMcpServers()]).then(()=>{ if(state.sel) renderInspector(); }); }
+  if(m==='builder'){ Promise.all([loadAgents(), loadMcpServers(), loadConnections()]).then(()=>{ if(state.sel) renderInspector(); }); }
 }
 function ensureChatWelcome(){
   const col=document.getElementById('csCol');
@@ -2215,6 +2260,7 @@ function paletteCommands(){
     {label:'New app', hint:'', act:()=>newApp()},
     {label:'My apps / library', hint:'', act:()=>openLibrary()},
     {label:'Executions history', hint:'🕘', act:()=>openRuns()},
+    {label:'Connections / settings', hint:'⚙', act:()=>openSettings()},
     {label:'Fit view to flow', hint:'', act:()=>resetView()},
     {label:'Tidy up (auto-layout)', hint:'✦', act:()=>tidyUp()},
     {label:'Undo', hint:'⌘Z', act:()=>undo()},
@@ -2284,6 +2330,65 @@ function newApp(){
 
 function openLibrary(){ document.getElementById('libModal').classList.add('show'); renderLibrary(); }
 function closeLibrary(){ document.getElementById('libModal').classList.remove('show'); }
+
+/* ---- Settings · Connections ---- */
+function openSettings(){ document.getElementById('settingsModal').classList.add('show'); renderConnections(); }
+function closeSettings(){ document.getElementById('settingsModal').classList.remove('show'); }
+async function renderConnections(form){
+  await loadConnections();
+  const body=document.getElementById('settingsBody');
+  let h=form||'';
+  if(!_CONNECTIONS.length && !form) h+='<div class="applist-empty">No connections yet.<br/>Add a remote Trino client to query it from your agents.</div>';
+  h+=_CONNECTIONS.map(c=>`<div class="conn-row">
+      <div class="ci">🗄</div>
+      <div class="conn-meta"><div class="cl">${esc(c.label)}</div>
+        <div class="cd">${esc(c.host||'')}:${esc(c.port||'')} · ${esc(c.catalog||'')}.${esc(c.schema||'')} · ${esc(c.authType||'none')}</div></div>
+      <span class="conn-test" id="ct_${esc(c.id)}"></span>
+      <button class="btn ghost" onclick="testConn('${esc(c.id)}')">Test ▷</button>
+      <button class="btn ghost" onclick="editConnForm('${esc(c.id)}')">Edit</button>
+      <button class="btn ghost" onclick="delConn('${esc(c.id)}')">🗑</button>
+    </div>`).join('');
+  body.innerHTML=h;
+  if(state.sel) renderInspector();   // refresh node pickers
+}
+function _connFormHTML(c){ c=c||{}; const A=['none','basic','jwt','obo'];
+  return `<div class="conn-form">
+    <div class="row"><div><label>Label</label><input id="cf_label" value="${esc(c.label||'')}" placeholder="Threat Intel (Trino)"/></div>
+      <div><label>Auth</label><select id="cf_auth">${A.map(a=>`<option ${a===(c.authType||'obo')?'selected':''}>${a}</option>`).join('')}</select></div></div>
+    <div class="row"><div style="flex:2"><label>Host</label><input id="cf_host" value="${esc(c.host||'')}" placeholder="intel.trino.local"/></div>
+      <div><label>Port</label><input id="cf_port" type="number" value="${esc(c.port||443)}"/></div>
+      <div><label>Scheme</label><select id="cf_scheme"><option ${c.scheme!=='http'?'selected':''}>https</option><option ${c.scheme==='http'?'selected':''}>http</option></select></div></div>
+    <div class="row"><div><label>Catalog</label><input id="cf_catalog" value="${esc(c.catalog||'')}" placeholder="threat_intel"/></div>
+      <div><label>Schema</label><input id="cf_schema" value="${esc(c.schema||'')}" placeholder="iocs"/></div></div>
+    <div class="row"><div><label>Username (optional)</label><input id="cf_user" value="${esc(c.username||'')}"/></div>
+      <div><label>Password / token (optional)</label><input id="cf_pass" type="password" placeholder="${c.id?'•••• (unchanged)':''}"/></div></div>
+    <div class="row" style="justify-content:flex-end;gap:8px;margin-bottom:0">
+      <button class="btn ghost" onclick="renderConnections()">Cancel</button>
+      <button class="btn primary" onclick="saveConn('${esc(c.id||'')}')">${c.id?'Save':'Create'} connection</button></div>
+  </div>`;
+}
+function newConnForm(){ renderConnections(_connFormHTML()); }
+async function editConnForm(id){ const c=await apiJSON('/api/connections/'+id); renderConnections(_connFormHTML(c)); }
+async function saveConn(id){
+  const g=x=>document.getElementById(x).value;
+  const body={label:g('cf_label'),kind:'trino',host:g('cf_host'),port:parseInt(g('cf_port'))||443,
+    scheme:g('cf_scheme'),catalog:g('cf_catalog'),schema:g('cf_schema'),authType:g('cf_auth'),username:g('cf_user')};
+  const pw=g('cf_pass'); if(pw) body.password=pw;
+  try{ if(id) await apiJSON('/api/connections/'+id,{method:'PUT',body:JSON.stringify(body)});
+       else await apiJSON('/api/connections',{method:'POST',body:JSON.stringify(body)}); }
+  catch(e){ toast&&toast('⚠ '+(e.message||'save failed')); return; }
+  toast&&toast('Connection saved'); renderConnections();
+}
+async function delConn(id){ if(!confirm('Delete this connection?'))return; await apiJSON('/api/connections/'+id,{method:'DELETE'}); renderConnections(); }
+async function testConn(id,linkEl){
+  const tag=document.getElementById('ct_'+id); if(tag) tag.innerHTML='<span style="color:var(--muted)">testing…</span>';
+  if(linkEl) linkEl.textContent='testing…';
+  let r; try{ r=await apiJSON('/api/connections/'+id+'/test',{method:'POST',body:'{}'}); }catch(e){ r={ok:false,error:e.message}; }
+  const msg=r.ok?`<span style="color:var(--ok)">✓ ${esc(r.version||'connected')}</span>`:`<span style="color:#ef4444">✗ ${esc(r.error||'failed')}</span>`;
+  if(tag) tag.innerHTML=msg;
+  if(linkEl) linkEl.outerHTML=msg;
+  if(!tag && !linkEl) toast&&toast(r.ok?('✓ '+(r.version||'connected')):('✗ '+(r.error||'failed')));
+}
 
 /* ---- Executions history ---- */
 let _runsScope='app';
@@ -2431,6 +2536,7 @@ function boot(){
   buildPalette();
   loadAgents();        // populate the agent picker for orchestration nodes
   loadMcpServers();    // populate the MCP server picker for source.mcp / tool.mcp
+  loadConnections();   // populate the remote-client connection pickers
   loadSample();        // a flow waits in the builder
   setMode('chat');     // consumers land in Chat; engineers toggle to 🛠 Builder
   refreshUsage(); setInterval(refreshUsage, 4000);
