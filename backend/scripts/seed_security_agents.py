@@ -87,6 +87,28 @@ PACK.append(app(
      ("tri", "rep"), ("det", "rep"), ("pb", "rep"), ("act", "rep")]))
 
 
+# Multi-cluster investigation — fans out to 3 remote Trino clients in parallel,
+# then an AI Agent synthesises. Showcases the multi-client connection picker.
+PACK.append(app(
+    "SOC · Multi-Cluster Investigation",
+    "Fan out a question across Threat Intel + Incident DB + Cloud Logs Trino clusters, then synthesize.",
+    [node("q", "input.text", "Question", 0, 1,
+          {"value": "Investigate recent credential phishing across our environment"}),
+     node("intel", "source.trino", "Threat Intel", 1, 0,
+          {"connectionId": "conn_threatintel", "sql": "SELECT indicator, type, score FROM iocs ORDER BY score DESC"}),
+     node("inc", "source.trino", "Incident DB", 1, 1,
+          {"connectionId": "conn_incidentdb", "sql": "SELECT id, severity, owner FROM incidents WHERE status='open'"}),
+     node("logs", "source.trino", "Cloud Logs", 1, 2,
+          {"connectionId": "conn_cloudlogs", "sql": "SELECT event_type, count(*) c FROM events GROUP BY event_type"}),
+     node("ai", "model.bedrock", "AI Agent", 2, 1,
+          {"provider": "bedrock", "modelId": "auto",
+           "system": "You are a SOC lead. Correlate the three sources into a risk summary + next steps.",
+           "prompt": "Question: @{q}\n\nThreat intel:\n@{intel}\n\nOpen incidents:\n@{inc}\n\nCloud log signals:\n@{logs}\n\nSynthesize the risk and recommend actions."}),
+     node("doc", "output.document", "Investigation Brief", 3, 1,
+          {"title": "Multi-Cluster Investigation", "template": "# @{title}\n\n@{ai}"})],
+    [("q", "intel"), ("q", "inc"), ("q", "logs"), ("intel", "ai"), ("inc", "ai"), ("logs", "ai"), ("ai", "doc")]))
+
+
 if __name__ == "__main__":
     for a in PACK:
         print("registered:", post(a))

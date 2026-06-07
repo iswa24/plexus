@@ -17,13 +17,14 @@ from datetime import datetime, timezone
 
 _SECRET_KEYS = {"password", "jwtSecret", "token"}
 
-# Seeded in demo mode so the demo can "connect to 3 clients" out of the box.
+# Seeded in demo mode (with STABLE ids so templates can reference them) so the
+# demo can "connect to 3 clients" out of the box.
 _DEMO_SEED = [
-    {"label": "Threat Intel (Trino)", "kind": "trino", "host": "intel.trino.local",
+    {"id": "conn_threatintel", "label": "Threat Intel (Trino)", "kind": "trino", "host": "intel.trino.local",
      "port": 8443, "scheme": "https", "catalog": "threat_intel", "schema": "iocs", "authType": "obo"},
-    {"label": "Incident DB (Trino)", "kind": "trino", "host": "warehouse.trino.local",
+    {"id": "conn_incidentdb", "label": "Incident DB (Trino)", "kind": "trino", "host": "warehouse.trino.local",
      "port": 8443, "scheme": "https", "catalog": "security", "schema": "incidents", "authType": "obo"},
-    {"label": "Cloud Logs (Trino)", "kind": "trino", "host": "logs.trino.local",
+    {"id": "conn_cloudlogs", "label": "Cloud Logs (Trino)", "kind": "trino", "host": "logs.trino.local",
      "port": 8443, "scheme": "https", "catalog": "cloud", "schema": "logs", "authType": "obo"},
 ]
 
@@ -76,7 +77,7 @@ class Connections:
         return row if with_secrets else _public(row)
 
     def create(self, body: dict) -> dict:
-        cid = "conn_" + uuid.uuid4().hex[:8]
+        cid = body.get("id") or ("conn_" + uuid.uuid4().hex[:8])
         label = body.get("label") or "Untitled connection"
         kind = body.get("kind") or "trino"
         cfg = {k: v for k, v in body.items() if k not in ("id", "label", "kind", "createdAt", "updatedAt")}

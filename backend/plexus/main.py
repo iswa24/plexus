@@ -54,6 +54,23 @@ def mcp_servers():
     return {"enabled": settings.mcp_enabled, "servers": out}
 
 
+@app.get("/api/config")
+def get_config():
+    """Which AI providers are wired (for the topbar provider picker + cred locks)."""
+    s = settings
+    return {
+        "demoMode": s.demo_mode,
+        "defaultProvider": s.nl2sql_provider or "bedrock",
+        "providers": {
+            "bedrock": {"label": "AWS Bedrock", "ready": True},          # IAM assumed; errors clearly if not
+            "azure": {"label": "Azure OpenAI",
+                      "ready": bool(s.azure_endpoint and (s.azure_api_key or s.azure_use_entra))},
+            "anthropic": {"label": "Anthropic API", "ready": bool(s.anthropic_api_key)},
+            "claudecode": {"label": "Claude Code", "ready": True},
+        },
+    }
+
+
 @app.get("/api/usage")
 def usage():
     """Token usage, model cost, and cache savings (the response cache means an

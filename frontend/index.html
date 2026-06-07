@@ -71,6 +71,13 @@
     border-radius:12px;z-index:2;box-shadow:0 6px 22px rgba(0,0,0,.35);user-select:none}
   .node.sel{border-color:var(--accent2);box-shadow:0 0 0 2px rgba(129,140,248,.35),0 8px 26px rgba(0,0,0,.45)}
   .node .nacc{position:absolute;top:0;left:0;right:0;height:3px;border-radius:12px 12px 0 0;opacity:.9;z-index:1}
+  .nprov{display:inline-block;margin-left:6px;font-size:9px;padding:1px 6px;border-radius:6px;
+    background:rgba(129,140,248,.16);color:#b9c2ff;border:1px solid rgba(129,140,248,.3);text-transform:none;letter-spacing:0}
+  .provider-pick{display:flex;align-items:center;gap:6px;background:var(--panel2);border:1px solid var(--line);
+    border-radius:9px;padding:3px 8px 3px 10px;margin-right:8px}
+  .provider-pick select{background:transparent;border:none;color:var(--text);font-size:12.5px;outline:none;cursor:pointer}
+  .pp-dot{width:8px;height:8px;border-radius:50%;background:var(--ok)}
+  .pp-dot.locked{background:#f59e0b}
   .node .nhead{display:flex;align-items:center;gap:8px;padding:11px 11px 9px;cursor:grab;
     border-bottom:1px solid var(--line);border-radius:12px 12px 0 0;position:relative}
   .node .nhead:active{cursor:grabbing}
@@ -458,6 +465,10 @@
     <input class="app-name" id="appName" value="Incident Triage Assistant" oninput="markDirty()" />
     <span class="saved-tag" id="savedTag"></span>
     <div class="spacer"></div>
+    <span class="provider-pick" title="AI provider for the agents (applies to all AI Agent nodes)">
+      <span class="pp-dot" id="ppDot"></span>
+      <select id="providerSel" onchange="setProviderAll(this.value)"></select>
+    </span>
     <button class="btn ask-btn" onclick="openAsk()" title="Ask a question — Plexus builds, runs, and lets you deploy an agent">✦ Ask</button>
     <button class="btn gen" onclick="openGenerate()" title="Build a flow from a description (no auto-run)">✨ Generate</button>
     <button class="btn ghost" onclick="newApp()">＋ New</button>
@@ -726,19 +737,20 @@ const TYPES = {
     badge:'MCP · read',
   },
   'model.bedrock': {
-    cat:'Sub-agents', name:'Bedrock LLM', icon:'✦', color:'var(--purple)',
+    cat:'AI Agents', name:'AI Agent', icon:'✦', color:'var(--purple)',
     defaults:{
-      modelId:'anthropic.claude-3-5-sonnet-20241022-v2:0',
+      provider:'bedrock', modelId:'auto',
       system:'You are a senior security analyst. Be concise and actionable.',
       prompt:"User asked: @{question}\n\nIncidents from the warehouse:\n@{incidents}\n\nRelated graph entities:\n@{graph}\n\nSummarize the risk and recommend next steps.",
       temperature:0.2, maxTokens:1500},
     fields:[
-      {k:'modelId', t:'select', label:'Model', options:[
+      {k:'provider', t:'select', label:'AI provider', options:['bedrock','azure','claudecode','anthropic']},
+      {k:'modelId', t:'select', label:'Model (auto = provider default)', options:[
+        'auto',
         'anthropic.claude-3-5-sonnet-20241022-v2:0',
         'anthropic.claude-3-5-haiku-20241022-v1:0',
-        'anthropic.claude-3-opus-20240229-v1:0',
+        'gpt-4o','gpt-4o-mini',
         'amazon.nova-pro-v1:0',
-        'amazon.titan-text-premier-v1:0',
         'meta.llama3-1-70b-instruct-v1:0',
       ]},
       {k:'system', t:'textarea', label:'System prompt'},
@@ -746,11 +758,11 @@ const TYPES = {
       {k:'temperature', t:'number', label:'Temperature', step:0.1},
       {k:'maxTokens', t:'number', label:'Max tokens'},
     ],
-    summary:n=>'✦ '+shortModel(n.config.modelId)+'\n'+oneline(n.config.prompt),
-    badge:'Bedrock',
+    summary:n=>'✦ '+(n.config.provider||'bedrock')+' · '+shortModel(n.config.modelId)+'\n'+oneline(n.config.prompt),
+    badge:'AI · multi-provider',
   },
   'model.agent': {
-    cat:'Sub-agents', name:'Agent (tools)', icon:'🤖', color:'#14b8a6',
+    cat:'AI Agents', name:'AI Agent · Tools', icon:'🤖', color:'#14b8a6',
     defaults:{
       modelId:'anthropic.claude-3-5-sonnet-20241022-v2:0',
       system:'You are a security analyst agent. Use the tools to gather evidence, then give a concise risk summary with recommended actions.',
@@ -781,7 +793,7 @@ const TYPES = {
     badge:'tool-use loop',
   },
   'model.nl2sql': {
-    cat:'Sub-agents', name:'NL→SQL Agent', icon:'🧮', color:'#f97316',
+    cat:'AI Agents', name:'NL→SQL Agent', icon:'🧮', color:'#f97316',
     defaults:{ source:'sqlite', connectionId:'', catalog:'', schema:'', tables:'', maxSchemaTables:25, provider:'claudecode', modelId:'claude-sonnet-4-5', goal:'@{question}', maxSteps:6, maxTokens:1500 },
     fields:[
       {k:'source', t:'select', label:'Data source', options:['sqlite','trino']},
@@ -804,7 +816,7 @@ const TYPES = {
     badge:'SQLite / Trino',
   },
   'model.classify': {
-    cat:'Sub-agents', name:'Classifier Agent', icon:'🏷', color:'#06b6d4',
+    cat:'AI Agents', name:'Classifier Agent', icon:'🏷', color:'#06b6d4',
     defaults:{ provider:'claudecode', modelId:'auto', input:'@{alert}',
       categories:'Phishing, Malware, Unauthorized Access, Data Loss, Policy Violation, Other' },
     fields:[
@@ -817,7 +829,7 @@ const TYPES = {
     badge:'triage / routing',
   },
   'model.detection': {
-    cat:'Sub-agents', name:'Detection Rule Agent', icon:'🛡', color:'#ef4444',
+    cat:'AI Agents', name:'Detection Rule Agent', icon:'🛡', color:'#ef4444',
     defaults:{ provider:'claudecode', modelId:'claude-sonnet-4-5', behavior:'@{behavior}', target:'Sigma' },
     fields:[
       {k:'provider', t:'select', label:'Model provider', options:['bedrock','claudecode','anthropic','azure']},
@@ -829,7 +841,7 @@ const TYPES = {
     badge:'detection-as-code',
   },
   'model.cypher': {
-    cat:'Sub-agents', name:'Graph Agent (NL→Cypher)', icon:'🕸', color:'#22c55e',
+    cat:'AI Agents', name:'Graph Agent (NL→Cypher)', icon:'🕸', color:'#22c55e',
     defaults:{ provider:'claudecode', modelId:'auto', goal:'@{question}', graphModel:'' },
     fields:[
       {k:'provider', t:'select', label:'Model provider', options:['bedrock','claudecode','anthropic','azure']},
@@ -841,7 +853,7 @@ const TYPES = {
     badge:'Neo4j · graph',
   },
   'model.rag': {
-    cat:'Sub-agents', name:'RAG Knowledge Agent', icon:'📚', color:'#8b5cf6',
+    cat:'AI Agents', name:'RAG Knowledge Agent', icon:'📚', color:'#8b5cf6',
     defaults:{ provider:'claudecode', modelId:'auto', goal:'@{question}', topK:4 },
     fields:[
       {k:'provider', t:'select', label:'Model provider', options:['bedrock','claudecode','anthropic','azure']},
@@ -853,7 +865,7 @@ const TYPES = {
     badge:'retrieval + cite',
   },
   'model.prompt': {
-    cat:'Sub-agents', name:'Prompt Agent', icon:'✍', color:'#a855f7',
+    cat:'AI Agents', name:'AI Agent · Prompt', icon:'✍', color:'#a855f7',
     defaults:{ provider:'claudecode', modelId:'auto', system:'You are a senior security analyst. Be concise and actionable.', goal:'@{question}' },
     fields:[
       {k:'provider', t:'select', label:'Model provider', options:['bedrock','claudecode','anthropic','azure']},
@@ -995,7 +1007,7 @@ const TYPES = {
     summary:n=>'{ } '+oneline(n.config.source),
   },
 };
-const PALETTE_ORDER = ['Input','Source','Sub-agents','Data Ops','Orchestration','Actions','Output'];
+const PALETTE_ORDER = ['Input','Source','AI Agents','Data Ops','Orchestration','Actions','Output'];
 
 /* registered-agent cache (for the agent picker on agent.call / flow.foreach) */
 let _AGENTS=[];
@@ -1011,6 +1023,27 @@ function mcpServerName(id){ const s=_MCP_SERVERS.find(x=>x.id===id); return s?(s
 let _CONNECTIONS=[];
 async function loadConnections(){ try{ _CONNECTIONS=await apiJSON('/api/connections'); }catch(e){ _CONNECTIONS=[]; } }
 function connName(id){ const c=_CONNECTIONS.find(x=>x.id===id); return c?(c.label||c.id):''; }
+
+/* AI providers (Bedrock / Azure / …) — topbar picker applies to all AI Agent nodes */
+let _PROVIDERS={}, _DEFAULT_PROVIDER='bedrock';
+async function loadAppConfig(){
+  try{ const c=await apiJSON('/api/config'); _PROVIDERS=c.providers||{}; _DEFAULT_PROVIDER=c.defaultProvider||'bedrock'; }
+  catch(e){ _PROVIDERS={bedrock:{label:'AWS Bedrock',ready:true},azure:{label:'Azure OpenAI',ready:false},claudecode:{label:'Claude Code',ready:true},anthropic:{label:'Anthropic API',ready:true}}; }
+  state.provider=state.provider||_DEFAULT_PROVIDER;
+  const sel=document.getElementById('providerSel'); if(!sel) return;
+  sel.innerHTML=Object.entries(_PROVIDERS).map(([k,v])=>`<option value="${k}" ${k===state.provider?'selected':''}>${esc(v.label)}${v.ready?'':' 🔒'}</option>`).join('');
+  updateProviderDot();
+}
+function updateProviderDot(){ const dot=document.getElementById('ppDot'); if(!dot) return;
+  const ready=(_PROVIDERS[state.provider]||{}).ready; dot.className='pp-dot'+(ready?'':' locked'); }
+function setProviderAll(p){
+  state.provider=p; updateProviderDot();
+  const sel=document.getElementById('providerSel'); if(sel) sel.value=p;
+  // apply to every node that has a provider field (the "swap Bedrock↔Azure live" moment)
+  let n=0; state.nodes.forEach(nd=>{ if('provider' in (nd.config||{})){ nd.config.provider=p; n++; } });
+  render(); if(state.sel) renderInspector(); markDirty();
+  const rd=(_PROVIDERS[p]||{}); flashHint('⚡ AI provider → '+(rd.label||p)+(rd.ready?'':' (no credentials — demo only)')+(n?` · ${n} agents`:''));
+}
 
 /* ---------- helpers ---------- */
 function oneline(s){ s=(s||'').replace(/\s+/g,' ').trim(); return s.length>70?s.slice(0,70)+'…':s; }
@@ -1236,7 +1269,7 @@ function renderNode(node){
       <span class="nico" style="background:${hex(d.color)}22;color:${hex(d.color)}">${d.icon}</span>
       <div style="flex:1;min-width:0">
         <div class="ntitle">${esc(node.config.label||d.name)}</div>
-        <div class="ntype">${node.type}${d.badge?' · '+d.badge:''}</div>
+        <div class="ntype">${node.type}${d.badge?' · '+d.badge:''}${node.config.provider?'<span class="nprov">⚡ '+esc(node.config.provider)+'</span>':''}</div>
       </div>
       <span class="status-dot ${st}"></span>
     </div>
@@ -2507,7 +2540,7 @@ function loadSample(){
   const out=addNodeAt('output.text',1010,90,{template:'## Risk Analysis\n@{bedrock}'});
   const tbl=addNodeAt('output.table',1010,300,{source:'@{trino}'});
   // relabel some ids' refName collisions by setting friendly labels
-  trino.config.label='Trino'; neo.config.label='Neo4j'; llm.config.label='Bedrock';
+  trino.config.label='Trino'; neo.config.label='Neo4j'; llm.config.label='AI Agent';
   link(trino.id,neo.id);
   link(q.id,llm.id); link(trino.id,llm.id); link(neo.id,llm.id);
   link(llm.id,out.id); link(trino.id,tbl.id);
@@ -2517,6 +2550,7 @@ function loadSample(){
 function addNodeAt(type,x,y,cfg){
   const d=TYPES[type];
   const node={id:uid(type.split('.')[1]),type,x,y,config:Object.assign(JSON.parse(JSON.stringify(d.defaults)),cfg||{})};
+  if('provider' in node.config && state.provider) node.config.provider=state.provider;  // honor topbar provider
   state.nodes.push(node); return node;
 }
 function link(s,t){ state.edges.push({id:uid('e'),source:s,target:t}); }
@@ -2537,6 +2571,7 @@ function boot(){
   loadAgents();        // populate the agent picker for orchestration nodes
   loadMcpServers();    // populate the MCP server picker for source.mcp / tool.mcp
   loadConnections();   // populate the remote-client connection pickers
+  loadAppConfig();     // populate the topbar AI-provider picker
   loadSample();        // a flow waits in the builder
   setMode('chat');     // consumers land in Chat; engineers toggle to 🛠 Builder
   refreshUsage(); setInterval(refreshUsage, 4000);
