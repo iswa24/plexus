@@ -131,3 +131,20 @@ def test_multi_server_least_privilege_scoping():
     assert "mcp_secintel_search_iocs" not in only_geo          # not granted -> not visible
     both = [s["toolSpec"]["name"] for s in mcp.agent_tool_specs(["secintel", "geoip"], stub)]
     assert len(both) == 4 and "mcp_secintel_block_ip" in both and "mcp_geoip_whois_domain" in both
+
+
+# ---------------------------------------------------------------- branded dbt/Kestra nodes
+def test_branded_dbt_kestra_nodes_dispatch_and_gate():
+    """First-class dbt.* / kestra.* nodes wrap the MCP servers; writes stay gated."""
+    from plexus.executor import _BRANDED
+    assert {"dbt.list", "dbt.run", "kestra.trigger"} <= set(_BRANDED)
+    app = AppDef(name="dataops", nodes=[
+        {"id": "g", "type": "input.text", "config": {"value": "fct_open_p1"}},
+        {"id": "l", "type": "dbt.list", "config": {}},
+        {"id": "r", "type": "dbt.run", "config": {"model": "@{g}", "approved": []}},   # unapproved
+        {"id": "t", "type": "kestra.trigger", "config": {"flow": "x", "approved": ["approved"]}},
+    ], edges=[{"id": "e1", "source": "g", "target": "l"}, {"id": "e2", "source": "g", "target": "r"}])
+    res = _await(execute(app, {}, settings, PRIN, _noop))
+    assert res["l"]["kind"] == "rows" and res["l"]["rows"]            # dbt.list -> models
+    assert res["r"].get("proposed") is True                          # dbt.run unapproved -> gated
+    assert "PROPOSED" in res["t"]["value"]                           # kestra write gated in demo mode

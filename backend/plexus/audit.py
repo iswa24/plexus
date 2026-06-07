@@ -62,6 +62,41 @@ class AuditLog:
             )
             self._conn.commit()
 
+    def runs(self, limit: int = 50, app_id: str | None = None) -> list[dict]:
+        """Recent executions, grouped by run_id (for the Executions history UI)."""
+        where, params = ("WHERE app_id=?", [app_id]) if app_id else ("", [])
+        params.append(limit)
+        with self._lock:
+            cur = self._conn.execute(
+                f"""SELECT run_id, app_id, principal, MIN(ts) started, MAX(ts) ended,
+                          COUNT(*) nodes, GROUP_CONCAT(node_type) types,
+                          SUM(CASE WHEN detail LIKE '%\"status\": \"error\"%' THEN 1 ELSE 0 END) errors
+                    FROM audit {where} GROUP BY run_id ORDER BY started DESC LIMIT ?""",
+                params,
+            )
+            cols = ["run_id", "app_id", "principal", "started", "ended", "nodes", "types", "errors"]
+            out = []
+            for r in cur.fetchall():
+                row = dict(zip(cols, r))
+                row["types"] = (row["types"] or "").split(",")
+                row["status"] = "error" if (row.get("errors") or 0) else "success"
+                out.append(row)
+            return out
+
+    def run(self, run_id: str) -> list[dict]:
+        """Per-node detail for one execution."""
+        with self._lock:
+            cur = self._conn.execute(
+                "SELECT ts, principal, app_id, run_id, node_id, node_type, detail "
+                "FROM audit WHERE run_id=? ORDER BY ts ASC", (run_id,))
+            cols = ["ts", "principal", "app_id", "run_id", "node_id", "node_type", "detail"]
+            out = []
+            for r in cur.fetchall():
+                row = dict(zip(cols, r))
+                row["detail"] = json.loads(row["detail"]) if row["detail"] else {}
+                out.append(row)
+            return out
+
     def recent(self, limit: int = 100) -> list[dict]:
         with self._lock:
             cur = self._conn.execute(

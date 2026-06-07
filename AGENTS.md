@@ -1,9 +1,15 @@
 # AGENTS.md — guide for AI coding agents working on Plexus
 
-Plexus is a drag-and-drop **agent builder** (Amazon Q Apps–style) over **Trino**,
-**Neo4j**, and **AWS Bedrock**. Users wire input / source / model / output / agent
-cards on a canvas, write `@`-annotated prompts, and run — each node streams its
-result. This file tells you how to build, run, test, and safely extend it.
+Plexus is a drag-and-drop **agent builder** (Amazon Q Apps–style) over **Trino**
+(one or many remote clusters), **Neo4j**, **dbt + Kestra** (via MCP), and a pluggable
+**AI provider** (AWS Bedrock · Azure OpenAI · Anthropic · local Claude CLI). Users wire
+input / source / AI-agent / output cards on a canvas, write `@`-annotated prompts, and
+run — each node streams its result. This file tells you how to build, run, test, and
+safely extend it.
+
+> **Wiring real connections (Trino / dbt / Kestra) for a firm?** Read
+> **[`docs/GO-LIVE.md`](docs/GO-LIVE.md)** — the full connection-setup runbook (every
+> `PLEXUS_*` var, the named-connection registry, OBO, and the dbt/Kestra MCP servers).
 
 ## TL;DR commands (run from `backend/`)
 
@@ -35,7 +41,9 @@ plexus/
 │   │   ├── auth.py          identity / Trino-OBO entry point
 │   │   ├── config.py        env settings (PLEXUS_*)
 │   │   ├── generator.py     build an App Definition from a NL prompt (POST /api/generate)
-│   │   └── connectors/      agent · bedrock · neo4j · trino · nl2sql · sqlbackends · sqldb · claudecli · demo_data
+│   │   ├── connections.py   named remote Trino clients (registry + /api/connections)
+│   │   └── connectors/      bedrock · llm · nl2sql · sqlbackends · trino · neo4j · cypher · classify · detection · rag · mcp · sources · demo_data
+│   ├── mcp_servers/         real MCP stdio servers: dbt · kestra · secintel · geoip
 │   ├── scripts/             seed_security.py · export_postgres_seed.py · test_nl2sql.py
 │   ├── data/                seeded SQLite DBs (gitignored; regenerate via seed script)
 ├── infra/                   docker-compose: Trino + Postgres for testing the Trino NL2SQL backend

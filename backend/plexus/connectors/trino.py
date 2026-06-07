@@ -29,12 +29,24 @@ def _parameterize(template: str, ctx) -> tuple[str, list]:
     return _REF.sub(repl, template or ""), params
 
 
+def _connection(config: dict, ctx) -> dict | None:
+    cid = config.get("connectionId")
+    if not cid:
+        return None
+    from ..connections import Connections  # local import avoids cycles
+    return Connections(ctx.settings.db_path, ctx.settings.demo_mode).get(cid, with_secrets=True)
+
+
 async def run_trino(config: dict, ctx, emit: Emit) -> dict[str, Any]:
     max_rows = int(config.get("maxRows", 500))
+    conn = _connection(config, ctx)          # named remote client, if selected
 
     if ctx.settings.demo_mode:
         rows = SAMPLE_INCIDENTS[:max_rows]
-        return {"kind": "rows", "columns": ["id", "severity", "owner", "ts"], "rows": rows}
+        out = {"kind": "rows", "columns": ["id", "severity", "owner", "ts"], "rows": rows}
+        if conn:
+            out["connection"] = conn.get("label")   # which cluster answered (shown in trace/audit)
+        return out
 
     sql, params = _parameterize(config.get("sql", ""), ctx)
 
@@ -47,19 +59,20 @@ async def run_trino(config: dict, ctx, emit: Emit) -> dict[str, Any]:
         ) from e
 
     s = ctx.settings
+    c = conn or {}                                  # selected connection (or {} -> .env defaults)
     auth = JWTAuthentication(ctx.principal.token) if ctx.principal.token else None
 
     def _run() -> tuple[list[str], list[dict]]:
-        conn = trino.dbapi.connect(
-            host=s.trino_host,
-            port=s.trino_port,
-            user=ctx.principal.username,  # identity propagation
-            catalog=config.get("catalog") or s.trino_catalog,
-            schema=config.get("schema"),
-            http_scheme=s.trino_scheme,
+        tconn = trino.dbapi.connect(
+            host=c.get("host") or s.trino_host,
+            port=int(c.get("port") or s.trino_port),
+            user=ctx.principal.username,  # identity propagation (OBO)
+            catalog=config.get("catalog") or c.get("catalog") or s.trino_catalog,
+            schema=config.get("schema") or c.get("schema"),
+            http_scheme=c.get("scheme") or s.trino_scheme,
             auth=auth,
         )
-        cur = conn.cursor()
+        cur = tconn.cursor()
         cur.execute(sql, params)  # bound params, not string-interpolated
         cols = [d[0] for d in cur.description] if cur.description else []
         data = cur.fetchmany(max_rows)

@@ -2,10 +2,14 @@
 
 > *Weave data, models & tools into agents.*
 
-A drag-and-drop agent builder (Amazon Q Apps–style) over **Trino**, **Neo4j**,
-and **Bedrock**. Drag input / source / model / output cards onto a canvas, wire
-them, write `@`-annotated prompts, pick a model, and run — each node streams its
-result live.
+A drag-and-drop agent builder (Amazon Q Apps–style) over **Trino** (one or many
+remote clusters), **Neo4j**, **dbt + Kestra** (via MCP), and a pluggable **AI
+provider** (AWS Bedrock · Azure OpenAI · Anthropic · local Claude CLI). Drag
+input / source / AI-agent / output cards onto a canvas, wire them, write
+`@`-annotated prompts, pick a provider, and run — each node streams its result live.
+
+> **Bringing this into a firm and wiring real Trino / dbt / Kestra?** Follow
+> **[`docs/GO-LIVE.md`](docs/GO-LIVE.md)** — the complete connection-setup runbook.
 
 ```
 plexus/
@@ -19,7 +23,9 @@ plexus/
 │   │   ├── config.py        env-driven settings (PLEXUS_*)
 │   │   ├── models.py        App Definition Pydantic schemas
 │   │   ├── generator.py     generate an App Definition from a natural-language prompt
-│   │   └── connectors/      agent · bedrock · neo4j · trino (+ demo_data)
+│   │   ├── connections.py   named remote Trino clients (registry + /api/connections)
+│   │   └── connectors/      bedrock/llm · nl2sql · trino · neo4j · mcp · sources (+ demo_data)
+│   ├── mcp_servers/         real MCP stdio servers: dbt · kestra · secintel · geoip
 │   ├── requirements.txt
 │   └── run.sh
 └── frontend/
@@ -41,12 +47,25 @@ works end-to-end with zero AWS / Neo4j / Trino setup.
 
 ```bash
 cp .env.example .env
-# edit .env: set PLEXUS_DEMO_MODE=false and fill the Bedrock / Neo4j / Trino sections
-pip install -r requirements.txt   # pulls boto3, neo4j, trino
+# edit .env: set PLEXUS_DEMO_MODE=false and fill the provider / Trino sections
+pip install -r requirements.txt   # pulls boto3, trino, mcp, …
 ./run.sh
 ```
 
 Connector libs are imported lazily, so demo mode runs on the core deps alone.
+
+**The full setup — AI providers, multi-client Trino connections, OBO identity, and
+connecting to your real local dbt + Kestra — is in [`docs/GO-LIVE.md`](docs/GO-LIVE.md).**
+Two things worth knowing up front:
+
+- **Multiple Trino clusters**: add each remote client in the UI
+  (**⋯ More → Connections & Settings**) or via `POST /api/connections`; a node then
+  references it by `connectionId`. The `PLEXUS_TRINO_*` env vars are just the default
+  fallback cluster. (`backend/plexus/connections.py`)
+- **dbt + Kestra**: reached through MCP servers in `backend/mcp_servers/`. They call
+  your real local dbt project / Kestra REST API when `DBT_PROJECT_DIR` / `KESTRA_BASE_URL`
+  are set (registered in `PLEXUS_MCP_SERVERS`), and simulate otherwise. See
+  [`backend/mcp_servers/README.md`](backend/mcp_servers/README.md).
 
 ## How it works
 
@@ -62,9 +81,9 @@ Connector libs are imported lazily, so demo mode runs on the core deps alone.
   (user + OBO token) for row-level security, and every node execution is written
   to the audit log.
 - **Generate from a prompt**: `POST /api/generate {prompt}` (`generator.py`) returns
-  an App Definition built from a plain-English description — Bedrock-generated when
-  configured, a deterministic keyword heuristic in demo mode. The ✨ Generate button
-  loads it onto the canvas, fully editable.
+  an App Definition built from a plain-English description — provider-generated when
+  configured, a deterministic keyword heuristic in demo mode — loaded onto the canvas,
+  fully editable.
 
 ## Real-time NL2SQL test (security databases)
 
@@ -114,12 +133,20 @@ file in `backend/`). See `backend/.env.example`.
 | Variable | Default | Purpose |
 |---|---|---|
 | `PLEXUS_DEMO_MODE` | `true` | Connectors return sample data; no credentials needed. Set `false` to use real connectors. |
-| `PLEXUS_DB_PATH` | `studio.db` | SQLite file for the app registry + audit log. |
+| `PLEXUS_DB_PATH` | `studio.db` | SQLite file for the app registry + audit log + connections. |
 | `PLEXUS_CORS_ORIGINS` | `*` | Comma-separated allowed origins. Lock down in prod. |
-| `PLEXUS_AWS_REGION` | `us-east-1` | Bedrock region. |
-| `PLEXUS_BEDROCK_DEFAULT_MODEL` | `anthropic.claude-3-5-sonnet-…` | Default model id. |
+| `PLEXUS_NL2SQL_PROVIDER` | `claudecode` | Default AI provider for NL→SQL: `claudecode` / `anthropic` / `bedrock` / `azure`. |
+| `PLEXUS_AWS_REGION` / `PLEXUS_BEDROCK_DEFAULT_MODEL` | `us-east-1`, `…sonnet…` | Bedrock region + default model. |
+| `PLEXUS_ANTHROPIC_API_KEY` / `_MODEL` | – , `claude-sonnet-4-5` | Anthropic direct API. |
+| `PLEXUS_AZURE_ENDPOINT` / `_API_KEY` / `_DEPLOYMENT` / `_USE_ENTRA` | – | Azure OpenAI (key or Entra/managed identity). |
 | `PLEXUS_NEO4J_URI` / `_USER` / `_PASSWORD` / `_DATABASE` | `bolt://localhost:7687`, `neo4j`, ``, `neo4j` | Neo4j connection. |
-| `PLEXUS_TRINO_HOST` / `_PORT` / `_SCHEME` / `_CATALOG` | `localhost`, `8080`, `https`, `hive` | Trino connection. |
+| `PLEXUS_ELASTIC_URL` | `http://localhost:9200` | Elasticsearch (SIEM logs source). |
+| `PLEXUS_TRINO_HOST` / `_PORT` / `_SCHEME` / `_CATALOG` / `_USER` | `localhost`, `8080`, `https`, `hive`, `studio` | **Default/fallback** Trino cluster. Multiple remote clients are added at runtime via Connections (see below). |
+| `PLEXUS_MCP_SERVERS` | `{}` | Admin allow-list of MCP servers (dbt, Kestra, …) as JSON. See [`backend/mcp_servers/README.md`](backend/mcp_servers/README.md). |
+
+**Runtime (not env):** remote Trino clients are managed as **Connections** — add them in
+the UI (**⋯ More → Connections & Settings**) or `POST /api/connections`; stored in
+`PLEXUS_DB_PATH`. Full reference: [`docs/GO-LIVE.md`](docs/GO-LIVE.md).
 
 ## Testing
 

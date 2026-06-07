@@ -31,12 +31,55 @@ app.add_middleware(
 
 registry = Registry(settings.db_path)
 audit = AuditLog(settings.db_path)
+from .connections import Connections  # noqa: E402
+connections = Connections(settings.db_path, demo_mode=settings.demo_mode)
 
 
 # ---------------------------------------------------------------- health
 @app.get("/api/health")
 def health():
     return {"ok": True, "demoMode": settings.demo_mode}
+
+
+# dbt models + lineage for the knowledge-graph / data-landscape view (mirrors the
+# dbt MCP server; swap for a real manifest.json parse in production).
+_DBT_MODELS = {
+    "stg_incidents": {"materialized": "view", "tests": 4, "fresh_min": 12},
+    "stg_assets": {"materialized": "view", "tests": 3, "fresh_min": 12},
+    "dim_business_unit": {"materialized": "table", "rows": 8, "tests": 2, "fresh_min": 35},
+    "fct_open_p1": {"materialized": "incremental", "rows": 7, "tests": 5, "fresh_min": 9},
+    "mart_exec_brief": {"materialized": "table", "tests": 2, "fresh_min": 40},
+}
+_DBT_LINEAGE = [("stg_incidents", "fct_open_p1"), ("stg_assets", "fct_open_p1"),
+                ("dim_business_unit", "fct_open_p1"), ("fct_open_p1", "mart_exec_brief")]
+# which registered source feeds which staging model (stable demo connection ids)
+_SRC_TO_MODEL = [("conn_incidentdb", "stg_incidents"), ("conn_threatintel", "stg_assets"),
+                 ("conn_cloudlogs", "stg_incidents")]
+
+
+@app.get("/api/data/landscape")
+def data_landscape():
+    """Knowledge graph of the data landscape: registered source clusters + dbt
+    models + lineage — so analysts see what exists and what to build on."""
+    nodes, edges = [], []
+    src_ids = set()
+    for c in connections.list():
+        if c.get("kind") == "trino":
+            nid = "src:" + c["id"]
+            src_ids.add(c["id"])
+            nodes.append({"id": nid, "label": c["label"], "kind": "source",
+                          "detail": {"host": c.get("host"), "catalog": c.get("catalog"),
+                                     "schema": c.get("schema"), "auth": c.get("authType")},
+                          "connectionId": c["id"]})
+    for m, meta in _DBT_MODELS.items():
+        nodes.append({"id": "model:" + m, "label": m, "kind": "model",
+                      "detail": meta, "model": m})
+    for a, b in _DBT_LINEAGE:
+        edges.append({"source": "model:" + a, "target": "model:" + b})
+    for s, m in _SRC_TO_MODEL:
+        if s in src_ids:
+            edges.append({"source": "src:" + s, "target": "model:" + m})
+    return {"nodes": nodes, "edges": edges}
 
 
 @app.get("/api/mcp/servers")
@@ -50,6 +93,23 @@ def mcp_servers():
                     "transport": s.get("transport", "stdio"),
                     "tools": s.get("tools", []), "resources": s.get("resources", [])})
     return {"enabled": settings.mcp_enabled, "servers": out}
+
+
+@app.get("/api/config")
+def get_config():
+    """Which AI providers are wired (for the topbar provider picker + cred locks)."""
+    s = settings
+    return {
+        "demoMode": s.demo_mode,
+        "defaultProvider": s.nl2sql_provider or "bedrock",
+        "providers": {
+            "bedrock": {"label": "AWS Bedrock", "ready": True},          # IAM assumed; errors clearly if not
+            "azure": {"label": "Azure OpenAI",
+                      "ready": bool(s.azure_endpoint and (s.azure_api_key or s.azure_use_entra))},
+            "anthropic": {"label": "Anthropic API", "ready": bool(s.anthropic_api_key)},
+            "claudecode": {"label": "Claude Code", "ready": True},
+        },
+    }
 
 
 @app.get("/api/usage")
@@ -94,6 +154,57 @@ def delete_app(app_id: str):
 @app.get("/api/audit")
 def get_audit(limit: int = 100):
     return audit.recent(limit)
+
+
+# ---------------------------------------------------------------- connections
+@app.get("/api/connections")
+def list_connections():
+    return connections.list()
+
+
+@app.post("/api/connections")
+def create_connection(body: dict):
+    return connections.create(body or {})
+
+
+@app.get("/api/connections/{cid}")
+def get_connection(cid: str):
+    c = connections.get(cid)
+    if not c:
+        raise HTTPException(status_code=404, detail="connection not found")
+    return c
+
+
+@app.put("/api/connections/{cid}")
+def update_connection(cid: str, body: dict):
+    c = connections.update(cid, body or {})
+    if not c:
+        raise HTTPException(status_code=404, detail="connection not found")
+    return c
+
+
+@app.delete("/api/connections/{cid}")
+def delete_connection(cid: str):
+    connections.delete(cid)
+    return {"ok": True}
+
+
+@app.post("/api/connections/{cid}/test")
+async def test_connection(cid: str, request: Request):
+    principal = principal_from_headers({k.lower(): v for k, v in request.headers.items()})
+    return await connections.test(cid, principal)
+
+
+@app.get("/api/runs")
+def list_runs(limit: int = 50, app_id: str | None = None):
+    """Execution history grouped by run (for the Executions UI)."""
+    return audit.runs(limit, app_id)
+
+
+@app.get("/api/runs/{run_id}")
+def get_run(run_id: str):
+    """Per-node detail for one execution."""
+    return audit.run(run_id)
 
 
 # ---------------------------------------------------------------- run helpers + saved app

@@ -47,6 +47,32 @@ _DEMO_TOOL_ROWS = {
         "rows": [{"cve": "CVE-2026-1337", "cvss": 9.8, "exploited": "yes",
                   "summary": "RCE in edge gateway"}],
     },
+    # dbt (Iceberg models) — demo fidelity for the branded dbt.* nodes
+    "list_models": {
+        "columns": ["model", "materialized", "rows", "tests", "fresh_min"],
+        "rows": [
+            {"model": "stg_incidents", "materialized": "view", "rows": None, "tests": 4, "fresh_min": 12},
+            {"model": "dim_business_unit", "materialized": "table", "rows": 8, "tests": 2, "fresh_min": 35},
+            {"model": "fct_open_p1", "materialized": "incremental", "rows": 7, "tests": 5, "fresh_min": 9},
+        ],
+    },
+    "model_lineage": {
+        "columns": ["model", "upstream", "downstream"],
+        "rows": [{"model": "fct_open_p1", "upstream": "stg_incidents, dim_business_unit",
+                  "downstream": "mart_exec_brief"}],
+    },
+    # kestra (orchestration) — demo fidelity for the branded kestra.* nodes
+    "list_flows": {
+        "columns": ["flow", "description", "schedule"],
+        "rows": [
+            {"flow": "daily_incident_brief", "description": "DBT refresh → Plexus brief → Slack", "schedule": "0 6 * * *"},
+            {"flow": "remediation", "description": "Quarantine host + open ticket (gated)", "schedule": None},
+        ],
+    },
+    "flow_status": {
+        "columns": ["executionId", "state", "duration_s"],
+        "rows": [{"executionId": "exec_demo", "state": "SUCCESS", "duration_s": 42}],
+    },
 }
 
 
@@ -229,7 +255,12 @@ async def _live_call(srv: dict, *, mode: str, tool: str, uri: str, args: dict, c
         async with sse_client(srv["url"]) as (read, write):
             async with ClientSession(read, write) as session:
                 return await _do(session)
-    params = StdioServerParameters(command=srv["command"], args=srv.get("args", []))
+    # Forward the server's `env` block (e.g. DBT_PROJECT_DIR, KESTRA_BASE_URL) to the
+    # subprocess, merged over the parent environment so PATH etc. survive (needed for
+    # the dbt CLI). If no `env` is configured, inherit the full parent environment.
+    import os as _os
+    env = {**_os.environ, **(srv.get("env") or {})}
+    params = StdioServerParameters(command=srv["command"], args=srv.get("args", []), env=env)
     async with stdio_client(params) as (read, write):
         async with ClientSession(read, write) as session:
             return await _do(session)

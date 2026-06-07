@@ -13,8 +13,11 @@ Emit = Callable[[dict], Awaitable[None]]
 
 
 async def run_bedrock(config: dict, ctx, emit: Emit) -> dict[str, Any]:
-    prompt = ctx.resolve(config.get("prompt", ""), for_prompt=True)
+    # `goal`/`input` are accepted as prompt fallbacks so "AI Agent" (model.bedrock) is a
+    # drop-in superset of the retired "AI Agent · Prompt" (model.prompt) node.
+    prompt = ctx.resolve(config.get("prompt") or config.get("goal") or config.get("input") or "", for_prompt=True)
     system = config.get("system", "")
+    provider = (config.get("provider") or "bedrock").lower()
     model_id = config.get("modelId") or ctx.settings.bedrock_default_model
 
     if ctx.settings.demo_mode:
@@ -22,9 +25,23 @@ async def run_bedrock(config: dict, ctx, emit: Emit) -> dict[str, Any]:
         acc = ""
         for i in range(0, len(text), 4):
             acc = text[: i + 4]
-            await emit({"partial": acc})
+            await emit({"partial": acc, "provider": provider})
             await asyncio.sleep(0.01)
-        return {"kind": "text", "value": text, "tokens": max(1, len(text) // 4)}
+        from . import llm
+        return {"kind": "text", "value": text, "tokens": max(1, len(text) // 4),
+                "provider": provider, "model": llm.model_name(config, ctx)}
+
+    # AI Agent is provider-agnostic: only the native "bedrock" path streams via
+    # Converse below; azure / anthropic / claudecode go through the shared client.
+    if provider != "bedrock":
+        from . import llm
+        try:
+            v = await llm.complete(prompt, system, config, ctx)
+        except Exception as exc:
+            v = f"⚠ model provider error: {exc}"
+        v = v or "⚠ no response from the model provider."
+        await emit({"partial": v, "provider": provider})
+        return {"kind": "text", "value": v, "provider": provider, "model": llm.model_name(config, ctx)}
 
     try:
         import boto3  # noqa: WPS433 (lazy import by design)
@@ -84,4 +101,4 @@ async def run_bedrock(config: dict, ctx, emit: Emit) -> dict[str, Any]:
         else:
             break
 
-    return {"kind": "text", "value": acc, "tokens": tokens}
+    return {"kind": "text", "value": acc, "tokens": tokens, "provider": "bedrock", "model": model_id}

@@ -101,3 +101,28 @@ def test_cache_answer_roundtrip_makes_next_ask_free():
     assert r2["cached"] == "semantic"
     assert r2["run_cost"] == 0.0
     assert r2["answer"] == "42"
+
+
+def test_runs_history_groups_executions():
+    """Running an app records an execution visible via /api/runs + /api/runs/{id}."""
+    app = {"name": "Runs Demo", "nodes": [
+        {"id": "q", "type": "input.text", "config": {"value": "hi"}},
+        {"id": "o", "type": "output.text", "config": {"template": "@{q}"}},
+    ], "edges": [{"id": "e", "source": "q", "target": "o"}]}
+    aid = client.post("/api/apps", json=app).json()["id"]
+    client.post(f"/api/apps/{aid}/run", json={"inputs": {}})
+    runs = client.get(f"/api/runs?app_id={aid}").json()
+    assert runs and runs[0]["nodes"] >= 1 and runs[0]["status"] in ("success", "error")
+    detail = client.get(f"/api/runs/{runs[0]['run_id']}").json()
+    assert any(r["node_type"] == "output.text" for r in detail)
+
+
+def test_data_landscape_graph():
+    g = client.get("/api/data/landscape").json()
+    kinds = {n["kind"] for n in g["nodes"]}
+    assert "source" in kinds and "model" in kinds
+    assert any(n["kind"] == "source" for n in g["nodes"])      # trino clusters as sources
+    assert g["edges"]                                          # lineage present
+    # every edge references existing nodes
+    ids = {n["id"] for n in g["nodes"]}
+    assert all(e["source"] in ids and e["target"] in ids for e in g["edges"])

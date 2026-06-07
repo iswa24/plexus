@@ -30,8 +30,11 @@ Inside Plexus, an agent can call the platform as **tools** via the MCP servers i
 - **kestra** — `list_flows`, `flow_status`, `trigger_flow` *(write, gated)*
 
 Register them in `backend/.env` (`PLEXUS_MCP_SERVERS`, see
-`backend/mcp_servers/README.md`). Write tools are approval-gated: an autonomous
-agent proposes `dbt_run` / `trigger_flow`; a human approves before they execute.
+`backend/mcp_servers/README.md`). The bundled dbt/Kestra servers connect to your
+**real** local dbt project / Kestra when `DBT_PROJECT_DIR` / `KESTRA_BASE_URL` are set —
+step-by-step in [`docs/GO-LIVE.md`](../../docs/GO-LIVE.md) §6. Write tools are
+approval-gated: an autonomous agent proposes `dbt_run` / `trigger_flow`; a human
+approves before they execute.
 
 ## Why both
 - **Kestra** = deterministic, scheduled, governed data DAGs.
