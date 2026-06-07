@@ -13,7 +13,9 @@ Emit = Callable[[dict], Awaitable[None]]
 
 
 async def run_bedrock(config: dict, ctx, emit: Emit) -> dict[str, Any]:
-    prompt = ctx.resolve(config.get("prompt", ""), for_prompt=True)
+    # `goal`/`input` are accepted as prompt fallbacks so "AI Agent" (model.bedrock) is a
+    # drop-in superset of the retired "AI Agent · Prompt" (model.prompt) node.
+    prompt = ctx.resolve(config.get("prompt") or config.get("goal") or config.get("input") or "", for_prompt=True)
     system = config.get("system", "")
     provider = (config.get("provider") or "bedrock").lower()
     model_id = config.get("modelId") or ctx.settings.bedrock_default_model

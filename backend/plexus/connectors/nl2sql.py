@@ -181,7 +181,7 @@ async def run_nl2sql(config: dict, ctx, emit: Emit) -> dict[str, Any]:
     try:
         # demo mode is a hard contract: canned output, no external/billed model calls
         if ctx.settings.demo_mode:
-            return await _demo(backend, steps, answer, tables, push)
+            return await _run_demo(backend, steps, answer, tables, push)
         scoped = await _scope_tables(backend, question, config, ctx, steps, push)
         schema = backend.schema_text(only=scoped)
         key = ctx.settings.anthropic_api_key
@@ -191,7 +191,7 @@ async def run_nl2sql(config: dict, ctx, emit: Emit) -> dict[str, Any]:
         use_anthropic = (not use_claudecode and not use_bedrock) and bool(key)
 
         if not (use_claudecode or use_bedrock or use_anthropic):
-            return await _demo(backend, steps, answer, tables, push)
+            return await _run_demo(backend, steps, answer, tables, push)
 
         # choose the model — fixed, or via the router
         requested = config.get("modelId")
@@ -207,8 +207,8 @@ async def run_nl2sql(config: dict, ctx, emit: Emit) -> dict[str, Any]:
             comp = lambda p, sy: claudecli.claude_run(p, system=sy, model=claudecli.cli_model(model_id))  # noqa: E731
             return await _generate(backend, schema, question, steps, answer, tables, push, comp, "Claude Code", meta)
         if use_bedrock:
-            comp = lambda p, sy: _bedrock_complete(p, sy, model_id, ctx.settings)  # noqa: E731
-            return await _generate(backend, schema, question, steps, answer, tables, push, comp, "Bedrock", meta)
+            return await _live_bedrock(backend, schema, question, config, ctx, max_steps,
+                                       steps, answer, tables, push, model_id, meta)
         return await _live(backend, schema, question, config, ctx, max_steps, steps, answer, tables, push, model_id, meta)
     finally:
         backend.close()
@@ -311,7 +311,118 @@ async def _live(backend, schema, question, config, ctx, max_steps, steps, answer
     return _out(steps, answer, tables, meta, tokens or None)
 
 
+# ---------------------------------------------------------------- Bedrock (Converse tool-use loop)
+async def _live_bedrock(backend, schema, question, config, ctx, max_steps, steps, answer,
+                        tables, push, model, meta) -> dict[str, Any]:
+    """Real agentic loop on Bedrock: the model calls run_sql, sees rows/errors, and
+    refines across up to max_steps turns — the same self-correction as the Anthropic
+    path, via the Converse toolConfig API."""
+    try:
+        import boto3  # noqa: WPS433 (lazy import by design)
+    except ImportError as e:  # pragma: no cover
+        raise RuntimeError("boto3 not installed. `pip install boto3`.") from e
+
+    client = boto3.client("bedrock-runtime", region_name=ctx.settings.aws_region)
+    system = [{"text": (f"You are a data analyst with a read-only SQL tool ({backend.dialect}).\n\n"
+                        f"Schema:\n{schema}\n\n{backend.notes}\n\n"
+                        "Write only SELECT queries. Call run_sql to fetch data, then answer concisely. "
+                        "If a query errors, read the error and try a corrected query.")}]
+    tool_config = {"tools": [{"toolSpec": {
+        "name": "run_sql",
+        "description": "Run one read-only SQL SELECT and get rows back.",
+        "inputSchema": {"json": {
+            "type": "object",
+            "properties": {"sql": {"type": "string", "description": "A single SELECT query"}},
+            "required": ["sql"],
+        }},
+    }}]}
+    messages: list[dict] = [{"role": "user", "content": [{"text": question}]}]
+    tokens = 0
+    for _ in range(max_steps):
+        resp = await asyncio.to_thread(
+            client.converse, modelId=model, system=system, messages=messages,
+            toolConfig=tool_config,
+            inferenceConfig={"temperature": 0.1, "maxTokens": int(config.get("maxTokens", 1500))},
+        )
+        tokens += ((resp.get("usage") or {}).get("outputTokens") or 0)
+        content = resp.get("output", {}).get("message", {}).get("content", []) or []
+        messages.append({"role": "assistant", "content": content})
+
+        if resp.get("stopReason") == "tool_use":
+            for b in content:
+                if (b.get("text") or "").strip():
+                    steps.append({"type": "think", "text": b["text"].strip()})
+            await push()
+            tool_results = []
+            for b in content:
+                tu = b.get("toolUse")
+                if not tu:
+                    continue
+                sql = (tu.get("input") or {}).get("sql", "")
+                steps.append({"type": "tool_call", "tool": "run_sql", "input": sql})
+                tables[:] = _dedup(tables + _tables_from_sql(sql))
+                await push()
+                tr = {"toolUseId": tu["toolUseId"]}
+                try:
+                    res = backend.run_select(sql)
+                    summary = f"{len(res['rows'])} rows"
+                    tr["content"] = [{"text": str({"columns": res["columns"], "rows": res["rows"][:50]})}]
+                except Exception as exc:
+                    summary = f"error: {exc}"
+                    tr["content"] = [{"text": f"ERROR: {exc}"}]
+                    tr["status"] = "error"
+                steps.append({"type": "tool_result", "tool": "run_sql", "summary": summary})
+                await push()
+                tool_results.append({"toolResult": tr})
+            messages.append({"role": "user", "content": tool_results})
+            continue
+
+        answer["value"] = "".join((b.get("text") or "") for b in content)
+        await push()
+        break
+    return _out(steps, answer, tables, meta, tokens or None)
+
+
 # ---------------------------------------------------------------- demo (no model)
+def _run_demo(backend, steps, answer, tables, push):
+    """Dispatch to the synthetic-Trino demo when the backend is the no-cluster stand-in,
+    otherwise the SQLite demo."""
+    if getattr(backend, "_plan", None) is not None:
+        return _demo_trino(backend, steps, answer, tables, push)
+    return _demo(backend, steps, answer, tables, push)
+
+
+async def _demo_trino(backend, steps, answer, tables, push) -> dict[str, Any]:
+    """Demo NL→SQL over Trino: introspect → route → write SQL → (first try errors) →
+    refine → run → answer. The deliberate first-query error makes the agent's
+    self-correcting loop visible with no cluster and no model call."""
+    plan = backend._plan
+    cat, sch = backend.catalog, backend.schema
+    meta = {"provider": "demo", "model": "(demo)", "routed": True}
+    steps.append({"type": "think", "text": f"Connected to {backend.label} · introspecting "
+                                            f"{cat}.{sch} ({len(plan['tables'])} tables)…"})
+    await push()
+    steps.append({"type": "router", "tier": "sonnet", "reason": "multi-column analysis", "model": "(demo)"})
+    await push()
+    # attempt 1 — a believable wrong column → error → the loop refines
+    steps.append({"type": "tool_call", "tool": "run_sql", "input": plan["bad_sql"]})
+    tables[:] = _dedup(tables + _tables_from_sql(plan["bad_sql"]))
+    await push()
+    steps.append({"type": "tool_result", "tool": "run_sql",
+                  "summary": f"error: {plan['error']} — refining query"})
+    await push()
+    # attempt 2 — corrected query → rows
+    steps.append({"type": "tool_call", "tool": "run_sql", "input": plan["sql"]})
+    tables[:] = _dedup(tables + _tables_from_sql(plan["sql"]))
+    await push()
+    res = backend.run_select(plan["sql"])
+    steps.append({"type": "tool_result", "tool": "run_sql", "summary": f"{len(res['rows'])} rows"})
+    await push()
+    answer["value"] = plan["answer"].format(n=len(res["rows"]))
+    await push()
+    return _out(steps, answer, tables, meta)
+
+
 async def _demo(backend, steps, answer, tables, push) -> dict[str, Any]:
     sql = ("SELECT i.id, i.severity, i.status, a.name AS asset, a.business_unit\n"
            "FROM incidents i JOIN assets.assets a ON i.asset_id = a.id\n"

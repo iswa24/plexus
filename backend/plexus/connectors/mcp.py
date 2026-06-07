@@ -255,7 +255,12 @@ async def _live_call(srv: dict, *, mode: str, tool: str, uri: str, args: dict, c
         async with sse_client(srv["url"]) as (read, write):
             async with ClientSession(read, write) as session:
                 return await _do(session)
-    params = StdioServerParameters(command=srv["command"], args=srv.get("args", []))
+    # Forward the server's `env` block (e.g. DBT_PROJECT_DIR, KESTRA_BASE_URL) to the
+    # subprocess, merged over the parent environment so PATH etc. survive (needed for
+    # the dbt CLI). If no `env` is configured, inherit the full parent environment.
+    import os as _os
+    env = {**_os.environ, **(srv.get("env") or {})}
+    params = StdioServerParameters(command=srv["command"], args=srv.get("args", []), env=env)
     async with stdio_client(params) as (read, write):
         async with ClientSession(read, write) as session:
             return await _do(session)

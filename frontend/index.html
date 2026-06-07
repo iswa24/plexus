@@ -35,6 +35,18 @@
   .btn.primary:hover{filter:brightness(1.08)}
   .btn.ghost{background:transparent}
   .btn.danger:hover{border-color:#7f1d1d;color:#fca5a5}
+  /* Primary-action group — pinned right, never shrinks/overflows off-screen */
+  .tb-actions{display:flex;align-items:center;gap:8px;flex-shrink:0}
+  .tb-menu{position:relative}
+  .btn.primary#runBtn{padding:7px 16px;font-size:13.5px;box-shadow:0 1px 10px rgba(99,102,241,.35)}
+  .tb-dropdown{position:absolute;right:0;top:calc(100% + 8px);min-width:210px;
+    background:var(--panel2);border:1px solid var(--line);border-radius:10px;
+    padding:6px;box-shadow:0 16px 40px rgba(0,0,0,.5);display:none;flex-direction:column;gap:1px;z-index:60}
+  .tb-dropdown.open{display:flex}
+  .tb-dropdown button{background:transparent;border:none;color:var(--text);text-align:left;
+    padding:8px 10px;border-radius:7px;font-size:13px;cursor:pointer;display:flex;align-items:center;gap:8px}
+  .tb-dropdown button:hover{background:#1b2230}
+  .tb-sep{height:1px;background:var(--line);margin:5px 2px}
 
   /* layout */
   .body{flex:1;display:flex;min-height:0}
@@ -88,6 +100,10 @@
     max-height:160px;overflow:auto;line-height:1.45}
   .nbody .summary{color:#aeb9c9;white-space:pre-wrap;word-break:break-word}
   .status-dot{width:9px;height:9px;border-radius:50%;background:#3a4658;flex-shrink:0}
+  .ncfg{background:none;border:none;color:var(--muted);font-size:13px;cursor:pointer;flex-shrink:0;
+    width:22px;height:22px;border-radius:6px;opacity:0;transition:opacity .12s ease;padding:0}
+  .node:hover .ncfg{opacity:.7}
+  .ncfg:hover{opacity:1;background:rgba(129,140,248,.18);color:var(--text)}
   .status-dot.running{background:var(--run);box-shadow:0 0 0 0 rgba(56,189,248,.6);animation:pulse 1s infinite}
   .status-dot.done{background:var(--ok)}
   .status-dot.error{background:#ef4444}
@@ -148,9 +164,14 @@
   .chk input{width:auto}
 
   /* config panel */
-  .inspector{width:368px;background:var(--panel);border-left:1px solid var(--line);
-    overflow-y:auto;flex-shrink:0;display:flex;flex-direction:column}
+  /* NDV right-docked pane: hidden until you double-click a node, then docks on the right */
+  .ndv-pane{width:380px;flex-shrink:0;background:var(--panel);border-left:1px solid var(--line);display:none}
+  .ndv-pane.show{display:flex}
+  .ndv-pane>#inspector{flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden}
   .insp-head{padding:15px 18px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px}
+  .ndv-x{margin-left:auto;background:none;border:none;color:var(--muted);font-size:16px;cursor:pointer;
+    width:30px;height:30px;border-radius:8px;flex-shrink:0}
+  .ndv-x:hover{background:var(--panel2);color:var(--text)}
   .insp-head .nico{width:28px;height:28px}
   .insp-head h3{margin:0;font-size:14.5px}
   .insp-body{padding:18px 18px 8px;flex:1;overflow:auto}
@@ -411,7 +432,7 @@
   .usage-meter b{color:#7ee2a8;font-weight:600}
   .chat-surface{flex:1;display:none;flex-direction:column;min-width:0}
   .app.mode-chat .chat-surface{display:flex}
-  .app.mode-chat .palette,.app.mode-chat .canvas-wrap,.app.mode-chat .inspector{display:none}
+  .app.mode-chat .palette,.app.mode-chat .canvas-wrap,.app.mode-chat .ndv-pane{display:none}
   .app.mode-chat .topbar .btn,.app.mode-chat .app-name,.app.mode-chat .saved-tag{display:none}
   .cs-transcript{flex:1;overflow-y:auto;padding:26px 0}
   .cs-col{width:min(760px,92%);margin:0 auto;display:flex;flex-direction:column;gap:14px}
@@ -477,18 +498,27 @@
       <span class="pp-dot" id="ppDot"></span>
       <select id="providerSel" onchange="setProviderAll(this.value)"></select>
     </span>
-    <button class="btn ghost" onclick="newApp()">＋ New</button>
-    <button class="btn save" id="saveBtn" onclick="saveCurrentApp()">💾 Save</button>
-    <button class="btn ghost" onclick="openLibrary()">📁 My Apps</button>
-    <button class="btn ghost" onclick="openLandscape()" title="Knowledge graph of your data landscape">📊 Landscape</button>
-    <button class="btn ghost" onclick="openRuns()" title="Execution history">🕘 Runs</button>
-    <button class="btn ghost" onclick="openSettings()" title="Connections & settings">⚙ Settings</button>
-    <button class="btn ghost" onclick="exportApp()">⤓ Export</button>
-    <button class="btn ghost" onclick="document.getElementById('importFile').click()">⤒ Import</button>
     <input type="file" id="importFile" accept=".json" style="display:none" onchange="importApp(event)"/>
-    <button class="btn connect" onclick="openConnect()" title="Integrate this agent into your code / pipelines">&lt;/&gt; Connect</button>
-    <button class="btn preview" onclick="openChat()" title="Use the app like an end user (chat)">▷ Preview</button>
-    <button class="btn primary" id="runBtn" onclick="runApp()" title="Run on the canvas (watch each node)">▶ Run</button>
+    <div class="tb-actions">
+      <div class="tb-menu">
+        <button class="btn ghost" id="moreBtn" onclick="toggleMore(event)" title="More actions" aria-haspopup="true">⋯ More</button>
+        <div class="tb-dropdown" id="moreMenu">
+          <button onclick="newApp();closeMore()">＋ New agent</button>
+          <button onclick="openLibrary();closeMore()">📁 My Apps</button>
+          <div class="tb-sep"></div>
+          <button onclick="openLandscape();closeMore()">📊 Data Landscape</button>
+          <button onclick="openRuns();closeMore()">🕘 Run history</button>
+          <button onclick="openSettings();closeMore()">⚙ Connections &amp; Settings</button>
+          <div class="tb-sep"></div>
+          <button onclick="openConnect();closeMore()">&lt;/&gt; Connect / API</button>
+          <button onclick="exportApp();closeMore()">⤓ Export agent</button>
+          <button onclick="document.getElementById('importFile').click();closeMore()">⤒ Import agent</button>
+        </div>
+      </div>
+      <button class="btn save" id="saveBtn" onclick="saveCurrentApp()">💾 Save</button>
+      <button class="btn preview" onclick="openChat()" title="Use the app like an end user (chat)">▷ Preview</button>
+      <button class="btn primary" id="runBtn" onclick="runApp()" title="Run on the canvas (watch each node light up)">▶ Run</button>
+    </div>
   </div>
 
   <div class="body">
@@ -497,7 +527,7 @@
 
     <!-- canvas -->
     <div class="canvas-wrap" id="canvasWrap">
-      <div class="hint" id="hint">Drag cards from the left · drag a node's right ● into another's left ● to wire · click a node to configure</div>
+      <div class="hint" id="hint">Drag cards from the left · drag a node's right ● into another's left ● to wire · double-click a node to configure</div>
       <div class="canvas" id="canvas">
         <svg class="edges" id="edges" width="10000" height="8000">
           <defs>
@@ -518,11 +548,9 @@
       <div class="runlog" id="runlog"></div>
     </div>
 
-    <!-- inspector -->
-    <div class="inspector" id="inspector">
-      <div class="empty-insp">Select a node to configure it.<br/><br/>
-        In any <span class="ref-pill">SQL</span>, <span class="ref-pill">Cypher</span> or
-        <span class="ref-pill">prompt</span> field, type <b>@</b> to reference another card's output.</div>
+    <!-- node config (NDV) — docks on the right when you double-click a node; hidden otherwise -->
+    <div class="ndv-pane" id="ndvModal">
+      <div id="inspector"></div>
     </div>
 
     <!-- CHAT MODE (consumer): route to an existing agent, or recommend building one -->
@@ -742,7 +770,7 @@ const TYPES = {
     badge:'SIEM logs',
   },
   'source.mcp': {
-    cat:'Source', name:'MCP Resource / Tool', icon:'🔌', color:'#0ea5e9',
+    cat:'Source', name:'MCP Resource (read)', icon:'🔌', color:'#0ea5e9',
     defaults:{serverId:'demo', mode:'tool', tool:'search_iocs', args:'{"query":"@{question}"}', resourceUri:'', maxRows:200},
     fields:[
       {k:'serverId', t:'mcpsel', label:'MCP server (admin allow-list)'},
@@ -781,7 +809,7 @@ const TYPES = {
     badge:'AI · multi-provider',
   },
   'model.agent': {
-    cat:'AI Agents', name:'AI Agent · Tools', icon:'🤖', color:'#14b8a6',
+    cat:'AI Agents', name:'Tool-Calling Agent', icon:'🤖', color:'#14b8a6',
     defaults:{
       modelId:'anthropic.claude-3-5-sonnet-20241022-v2:0',
       system:'You are a security analyst agent. Use the tools to gather evidence, then give a concise risk summary with recommended actions.',
@@ -885,6 +913,8 @@ const TYPES = {
   },
   'model.prompt': {
     cat:'AI Agents', name:'AI Agent · Prompt', icon:'✍', color:'#a855f7',
+    hidden:true,   // merged into "AI Agent" (model.bedrock); kept so existing apps still render
+
     defaults:{ provider:'claudecode', modelId:'auto', system:'You are a senior security analyst. Be concise and actionable.', goal:'@{question}' },
     fields:[
       {k:'provider', t:'select', label:'Model provider', options:['bedrock','claudecode','anthropic','azure']},
@@ -908,7 +938,7 @@ const TYPES = {
     badge:'response · gated',
   },
   'tool.mcp': {
-    cat:'Actions', name:'MCP Tool (invoke)', icon:'🔌', color:'#6366f1',
+    cat:'Actions', name:'MCP Tool (action)', icon:'🔌', color:'#6366f1',
     defaults:{serverId:'demo', tool:'search_iocs', args:'{"query":"@{question}"}', sideEffect:'read-only', approved:false},
     fields:[
       {k:'serverId', t:'mcpsel', label:'MCP server (admin allow-list)'},
@@ -1097,7 +1127,7 @@ function buildPalette(){
   const p=document.getElementById('palette'); p.innerHTML='';
   PALETTE_ORDER.forEach(cat=>{
     const h=document.createElement('h4'); h.textContent=cat; p.appendChild(h);
-    Object.entries(TYPES).filter(([,d])=>d.cat===cat).forEach(([type,d])=>{
+    Object.entries(TYPES).filter(([,d])=>d.cat===cat && !d.hidden).forEach(([type,d])=>{
       const el=document.createElement('div'); el.className='pnode'; el.draggable=true;
       el.innerHTML=`<span class="pico" style="background:${hex(d.color)}22;color:${hex(d.color)}">${d.icon}</span>${d.name}`;
       el.addEventListener('dragstart',e=>e.dataTransfer.setData('type',type));
@@ -1172,6 +1202,10 @@ function deleteNode(id){
   markDirty(); render(); renderInspector();
 }
 function select(id){ if(id!==state.sel) inspTab='params'; state.sel=id; render(); renderInspector(); }
+// NDV config modal: double-click a node to open; canvas stays full-width otherwise.
+function openNDV(id){ if(id!==state.sel) inspTab='params'; state.sel=id; render(); renderInspector();
+  document.getElementById('ndvModal').classList.add('show'); }
+function closeNDV(){ const m=document.getElementById('ndvModal'); if(m) m.classList.remove('show'); render(); }
 
 /* ============================================================
    COORDINATE TRANSFORM
@@ -1290,6 +1324,7 @@ function renderNode(node){
         <div class="ntitle">${esc(node.config.label||d.name)}</div>
         <div class="ntype">${node.type}${d.badge?' · '+d.badge:''}${node.config.provider?'<span class="nprov">⚡ '+esc(node.config.provider)+'</span>':''}</div>
       </div>
+      <button class="ncfg" title="Configure node (or double-click)">⚙</button>
       <span class="status-dot ${st}"></span>
     </div>
     <div class="nbody">${r?renderResult(node,r):'<div class="summary">'+esc(d.summary(node))+'</div>'}</div>
@@ -1303,6 +1338,10 @@ function renderNode(node){
     e.stopPropagation();                 // don't also fire el's select()->render() (would detach the dragged card)
     startNodeDrag(e,node,el); });
   el.addEventListener('mousedown',e=>{ if(e.target.classList.contains('port'))return; select(node.id); });
+  el.addEventListener('dblclick',e=>{ if(e.target.classList.contains('port'))return; openNDV(node.id); });
+  const cfg=el.querySelector('.ncfg');
+  cfg.addEventListener('mousedown',e=>e.stopPropagation());   // don't start a drag
+  cfg.addEventListener('click',e=>{ e.stopPropagation(); openNDV(node.id); });
   // ports
   el.querySelector('.port.out').addEventListener('mousedown',e=>{ e.stopPropagation(); startWire(e,node); });
 }
@@ -1472,14 +1511,14 @@ document.addEventListener('keydown',e=>{
   if(meta && e.key.toLowerCase()==='z' && !typing){ e.preventDefault(); e.shiftKey?redo():undo(); return; }
   if(meta && e.key.toLowerCase()==='y' && !typing){ e.preventDefault(); redo(); return; }
   if(e.key==='?' && !typing){ e.preventDefault(); openHelp(); return; }
-  if(e.key==='Escape'){ closePalette(); closeHelp(); closeRuns(); closeSettings(); closeLandscape(); }
+  if(e.key==='Escape'){ closePalette(); closeHelp(); closeRuns(); closeSettings(); closeLandscape(); closeNDV(); }
   if((e.key==='Delete'||e.key==='Backspace')&&state.sel&&!typing){ deleteNode(state.sel); }
 });
 window.addEventListener('beforeunload',e=>{ if(state.dirty){ e.preventDefault(); e.returnValue=''; } });
 
 function flashHint(msg){ const h=document.getElementById('hint'); h.textContent=msg; h.style.display='block';
   setTimeout(()=>{ h.style.display=state.nodes.length?'none':'block';
-    h.textContent="Drag cards from the left · drag a node's right ● into another's left ● to wire · click a node to configure"; },1600); }
+    h.textContent="Drag cards from the left · drag a node's right ● into another's left ● to wire · double-click a node to configure"; },1600); }
 
 /* ============================================================
    INSPECTOR (config panel) + @ autocomplete
@@ -1492,14 +1531,13 @@ function setOutTab(t){ outTab=t; renderInspector(); }
 function renderInspector(){
   const ins=document.getElementById('inspector');
   const node=state.nodes.find(n=>n.id===state.sel);
-  if(!node){ ins.innerHTML='<div class="empty-insp">Select a node to configure it.<br/><br/>In any '+
-    '<span class="ref-pill">SQL</span>, <span class="ref-pill">Cypher</span> or <span class="ref-pill">prompt</span>'+
-    ' field, type <b>@</b> to reference another card\'s output.</div>'; return; }
+  if(!node){ const m=document.getElementById('ndvModal'); if(m) m.classList.remove('show'); ins.innerHTML=''; return; }
   const d=TYPES[node.type];
   const r=state.results[node.id];
   const hasOut=!!(r&&r.output) || !!(state.pins&&state.pins[node.id]);
   let h=`<div class="insp-head"><span class="nico" style="background:${hex(d.color)}22;color:${hex(d.color)}">${d.icon}</span>
-    <div><h3>${d.name}</h3><div class="ntype">${node.id}</div></div></div>`;
+    <div style="min-width:0"><h3>${d.name}</h3><div class="ntype">${node.id}</div></div>
+    <button class="ndv-x" onclick="closeNDV()" title="Close (Esc)">✕</button></div>`;
   h+=`<div class="insp-tabs">
     <button class="itab${inspTab==='params'?' on':''}" onclick="setInspTab('params')">Parameters</button>
     <button class="itab${inspTab==='input'?' on':''}" onclick="setInspTab('input')">Input</button>
@@ -1837,7 +1875,7 @@ function computeAnswerNodes(){
   if(models.length) return models;
   return state.nodes.filter(n=>n.type==='output.text').map(n=>n.id);
 }
-function renderChatAnswer(partials, ids){
+function renderPreviewAnswer(partials, ids){
   let html='';
   ids.forEach(id=>{ const o=partials[id]; if(!o)return;
     if(o.kind==='agent'){
@@ -1867,11 +1905,11 @@ function runChat(inputs){
   ws.onmessage=ev=>{ let f; try{ f=JSON.parse(ev.data); }catch(e){ return; }
     if(f.event==='node'){
       if(f.output!==undefined && ids.includes(f.nodeId)) partials[f.nodeId]=f.output;
-      const ans=renderChatAnswer(partials,ids);
+      const ans=renderPreviewAnswer(partials,ids);
       bubble.innerHTML=(ans||'<span class="typing">▍</span>')+(ans&&f.status!=='done'?'<span class="typing">▍</span>':'');
       document.getElementById('chatTranscript').scrollTop=1e9;
     } else if(f.event==='run_complete'){
-      bubble.innerHTML=renderChatAnswer(partials,ids)||'(no answer produced)';
+      bubble.innerHTML=renderPreviewAnswer(partials,ids)||'(no answer produced)';
       document.getElementById('chatTranscript').scrollTop=1e9; finish();
     } else if(f.event==='error'){ bubble.innerHTML='⚠ '+esc(f.error); finish(); }
   };
@@ -2378,12 +2416,18 @@ async function saveCurrentApp(){
 function newApp(){
   if(state.dirty && !confirm('Discard unsaved changes and start a new app?')) return;
   state.nodes=[]; state.edges=[]; state.results={}; state.sel=null; state.appId=null; state.savedAt=null; state.idc=1;
-  document.getElementById('appName').value='Untitled app';
+  document.getElementById('appName').value='Untitled agent';
   render(); renderInspector(); markClean(); resetHistory();
 }
 
 function openLibrary(){ document.getElementById('libModal').classList.add('show'); renderLibrary(); }
 function closeLibrary(){ document.getElementById('libModal').classList.remove('show'); }
+
+/* ---- Topbar "More" overflow menu ---- */
+function toggleMore(e){ if(e) e.stopPropagation(); document.getElementById('moreMenu').classList.toggle('open'); }
+function closeMore(){ const m=document.getElementById('moreMenu'); if(m) m.classList.remove('open'); }
+document.addEventListener('click', e=>{ const m=document.getElementById('moreMenu');
+  if(m&&m.classList.contains('open')&&!e.target.closest('.tb-menu')) m.classList.remove('open'); });
 
 /* ---- Knowledge graph · Data landscape ---- */
 let _LS=null, _lsSel=null;
