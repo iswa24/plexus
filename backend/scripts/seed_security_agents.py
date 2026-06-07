@@ -227,6 +227,20 @@ PACK.append(app(
     [("q", "g"), ("g", "doc")]))
 
 
+# NL → Kestra flow generator (the kestra.generate node) — plain English to flow YAML.
+PACK.append(app(
+    "Kestra · NL→Flow Generator",
+    "Plain English → a deployable Kestra flow (YAML) with tasks + schedule.",
+    [node("q", "input.text", "Request", 0, 0,
+          {"value": "Sweep new IOCs across the estate every 30 minutes, score them with a Plexus "
+                    "agent, and alert SecOps on Slack."}),
+     node("g", "kestra.generate", "Kestra · Generate Flow (NL)", 1, 0,
+          {"goal": "@{q}", "flowId": "ioc_sweep", "namespace": "company.team", "provider": "bedrock", "modelId": "auto"}),
+     node("doc", "output.document", "Kestra Flow", 2, 0,
+          {"title": "Generated Kestra Flow", "template": "# @{title}\n\n@{g}"})],
+    [("q", "g"), ("g", "doc")]))
+
+
 if __name__ == "__main__":
     for a in PACK:
         print("registered:", post(a))

@@ -1017,6 +1017,19 @@ const TYPES = {
     ],
     summary:n=>'🧱 dbt · run '+(n.config.model||'all')+' · write (gated)', badge:'dbt · write',
   },
+  'kestra.generate': {
+    cat:'Data Ops', name:'Kestra · Generate Flow (NL)', icon:'✨', color:'#7C4DFF',
+    defaults:{ goal:'@{question}', flowId:'new_flow', namespace:'company.team', provider:'bedrock', modelId:'auto' },
+    fields:[
+      {k:'goal', t:'textarea', refs:true, label:'What should the flow do? (natural language)'},
+      {k:'flowId', t:'text', label:'Flow id'},
+      {k:'namespace', t:'text', label:'Namespace'},
+      {k:'provider', t:'select', label:'AI provider', options:['bedrock','azure','claudecode','anthropic']},
+      {k:'modelId', t:'select', label:'Model', options:['auto','claude-sonnet-4-5','claude-3-5-haiku-latest']},
+    ],
+    summary:n=>'✨ Kestra · generate '+(n.config.flowId||'flow')+' from NL',
+    badge:'kestra · NL→YAML',
+  },
   'kestra.flows': {
     cat:'Data Ops', name:'Kestra · List Flows', icon:'🧭', color:'#7C4DFF',
     defaults:{namespace:'security'}, fields:[{k:'namespace', t:'text', label:'Namespace'}],
