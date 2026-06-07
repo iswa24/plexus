@@ -58,4 +58,5 @@ no credentials.
 3. `backend/plexus/executor.py` → add a dispatch branch in `run_node`.
 
 For full detail read **`AGENTS.md`** and **`docs/DESIGN.md`** (architecture +
-App Definition spec).
+App Definition spec). The built-in skills (palette nodes + templates over Trino/dbt/Kestra)
+are cataloged in **`docs/SKILLS.md`**.
