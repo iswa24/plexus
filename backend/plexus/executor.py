@@ -33,6 +33,7 @@ from .connectors.kestra_monitor import run_kestra_monitor
 from .connectors.trino_guard import run_trino_guard
 from .connectors.nl2dbt import run_nl2dbt
 from .connectors.nl2kestra import run_nl2kestra
+from .connectors.landscape_map import run_landscape_map
 from .connectors.mcp import run_mcp_resource, run_mcp_tool
 from .connectors.prompt_agent import run_prompt
 from .connectors.rag import run_rag
@@ -185,6 +186,8 @@ async def run_node(node: Node, ctx: RunContext, emit: Emit) -> dict[str, Any]:
         return await run_nl2dbt(cfg, ctx, emit)
     if t == "kestra.generate":
         return await run_nl2kestra(cfg, ctx, emit)
+    if t == "landscape.map":
+        return await run_landscape_map(cfg, ctx, emit)
     if t in _BRANDED:
         return await _run_branded(t, cfg, ctx, emit)
     if t == "flow.branch":

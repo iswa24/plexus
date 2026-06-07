@@ -241,6 +241,47 @@ PACK.append(app(
     [("q", "g"), ("g", "doc")]))
 
 
+# Compliance Evidence Collector — assembles an audit-ready pack from dbt lineage +
+# Trino records + Kestra run history. Composite: Trino + dbt + Kestra + AI.
+PACK.append(app(
+    "Compliance Evidence Collector",
+    "Audit-ready evidence pack: dbt lineage + Trino records + Kestra run history → AI compliance report.",
+    [node("q", "input.text", "Audit Scope / Control", 0, 1,
+          {"value": "Quarterly evidence pack for the incidents data pipeline: prove data lineage, "
+                    "access controls, and orchestration run history are governed."}),
+     node("models", "dbt.list", "dbt · Model Inventory", 1, 0, {"maxRows": 200}),
+     node("lin", "dbt.lineage", "dbt · Lineage (fct_open_p1)", 1, 1, {"model": "fct_open_p1"}),
+     node("access", "source.trino", "Records under Control (Trino)", 1, 2,
+          {"connectionId": "conn_incidentdb",
+           "sql": "SELECT id, severity, owner, asset FROM incidents WHERE status='open'"}),
+     node("runs", "kestra.monitor", "Orchestration Run History", 1, 3,
+          {"namespace": "company.team", "limit": 25, "provider": "bedrock", "modelId": "auto"}),
+     node("audit", "model.bedrock", "Compliance Officer", 2, 1,
+          {"provider": "bedrock", "modelId": "auto",
+           "system": "You are a compliance officer assembling an audit-ready evidence pack. Given the "
+                     "scope, dbt model inventory, data lineage, records under control, and orchestration "
+                     "run history, produce: (1) controls in scope, (2) evidence gathered with what each "
+                     "proves, (3) gaps/exceptions, (4) an attestation paragraph. Cite the artifacts.",
+           "prompt": "Audit scope:\n@{q}\n\ndbt model inventory:\n@{models}\n\nData lineage "
+                     "(fct_open_p1):\n@{lin}\n\nRecords under control:\n@{access}\n\nOrchestration run "
+                     "history:\n@{runs}\n\nAssemble the evidence pack."}),
+     node("doc", "output.document", "Compliance Evidence Pack", 3, 1,
+          {"title": "Compliance Evidence Pack", "template": "# @{title}\n\n@{audit}"})],
+    [("q", "audit"), ("models", "audit"), ("lin", "audit"), ("access", "audit"),
+     ("runs", "audit"), ("audit", "doc")]))
+
+
+# Auto-Landscape — inventory Trino sources + dbt models + Kestra flows, suggest gaps.
+PACK.append(app(
+    "Map Data Landscape",
+    "Inventories Trino sources + dbt models + Kestra flows and suggests what to build next.",
+    [node("m", "landscape.map", "Map Data Landscape", 0, 0,
+          {"namespace": "company.team", "provider": "bedrock", "modelId": "auto"}),
+     node("doc", "output.document", "Landscape Brief", 1, 0,
+          {"title": "Data Landscape", "template": "# @{title}\n\n@{m}"})],
+    [("m", "doc")]))
+
+
 if __name__ == "__main__":
     for a in PACK:
         print("registered:", post(a))

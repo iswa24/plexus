@@ -1017,6 +1017,17 @@ const TYPES = {
     ],
     summary:n=>'🧱 dbt · run '+(n.config.model||'all')+' · write (gated)', badge:'dbt · write',
   },
+  'landscape.map': {
+    cat:'Data Ops', name:'Map Data Landscape', icon:'🗺', color:'#22c55e',
+    defaults:{ namespace:'company.team', provider:'bedrock', modelId:'auto' },
+    fields:[
+      {k:'namespace', t:'text', label:'Kestra namespace'},
+      {k:'provider', t:'select', label:'AI provider', options:['bedrock','azure','claudecode','anthropic']},
+      {k:'modelId', t:'select', label:'Model', options:['auto','claude-sonnet-4-5','claude-3-5-haiku-latest']},
+    ],
+    summary:n=>'🗺 map sources + dbt models + Kestra flows',
+    badge:'inventory + gaps',
+  },
   'kestra.generate': {
     cat:'Data Ops', name:'Kestra · Generate Flow (NL)', icon:'✨', color:'#7C4DFF',
     defaults:{ goal:'@{question}', flowId:'new_flow', namespace:'company.team', provider:'bedrock', modelId:'auto' },
