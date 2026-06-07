@@ -10,6 +10,9 @@ safely extend it.
 > **Wiring real connections (Trino / dbt / Kestra) for a firm?** Read
 > **[`docs/GO-LIVE.md`](docs/GO-LIVE.md)** — the full connection-setup runbook (every
 > `PLEXUS_*` var, the named-connection registry, OBO, and the dbt/Kestra MCP servers).
+>
+> **Catalog of built-in skills** (palette nodes + templates, what each does, the code
+> behind it): **[`docs/SKILLS.md`](docs/SKILLS.md)**. Add a node via the 3-edit pattern below.
 
 ## TL;DR commands (run from `backend/`)
 

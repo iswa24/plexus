@@ -188,6 +188,14 @@ For the full architecture and the complete App Definition spec, see
 [`docs/DESIGN.md`](docs/DESIGN.md). Agent-specific guidance is in
 [`AGENTS.md`](AGENTS.md).
 
+## Skills (what you can build with)
+
+The palette ships **node** skills (NL→SQL, dbt Test Triage, Kestra Monitor+Alert, Trino
+cost-guard, NL→dbt, NL→Kestra, Map Data Landscape, …) and pre-wired **template** skills
+(Incident Impact, Self-Healing Pipeline, Detection-as-Data, Compliance Evidence, …). The
+full catalog — what each does, inputs, live vs demo, governance — is in
+**[`docs/SKILLS.md`](docs/SKILLS.md)**.
+
 ## Roadmap / open tasks
 
 - [ ] **Trino OBO** — implement the IdP token exchange in `auth.py` (token is
