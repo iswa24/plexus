@@ -82,13 +82,18 @@
   .status-dot.error{background:#ef4444}
   @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(56,189,248,.55)}70%{box-shadow:0 0 0 7px rgba(56,189,248,0)}100%{box-shadow:0 0 0 0 rgba(56,189,248,0)}}
 
+  .node{transition:box-shadow .16s ease, border-color .16s ease, transform .06s ease}
+  .node:hover{border-color:#3c4a64;box-shadow:0 10px 30px rgba(0,0,0,.5)}
   /* ports */
-  .port{position:absolute;width:14px;height:14px;border-radius:50%;background:#0b0f17;
-    border:2px solid #5b6678;top:18px;z-index:3}
-  .port:hover{border-color:var(--accent2);background:var(--accent)}
-  .port.in{left:-8px}
-  .port.out{right:-8px}
-  .port.out{cursor:crosshair}
+  .port{position:absolute;width:13px;height:13px;border-radius:50%;background:#0b0f17;
+    border:2px solid #6b7790;top:18px;z-index:3;transition:box-shadow .12s, transform .1s}
+  .port.in{left:-7px}
+  .port.out{right:-7px;background:var(--accent2);border-color:var(--accent2);cursor:crosshair}
+  .port.out:hover{transform:scale(1.18);box-shadow:0 0 0 5px rgba(129,140,248,.22)}
+  .port.in:hover{border-color:var(--accent2);box-shadow:0 0 0 5px rgba(129,140,248,.18)}
+  /* edge flow animation while running */
+  .edge-flow{animation:dashflow .55s linear infinite}
+  @keyframes dashflow{to{stroke-dashoffset:-24}}
 
   /* result rendering inside node */
   .res-table{width:100%;border-collapse:collapse;font-size:10.5px;margin-top:4px}
@@ -459,10 +464,9 @@
       <div class="canvas" id="canvas">
         <svg class="edges" id="edges" width="10000" height="8000">
           <defs>
-            <marker id="arrowhead" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11"
-                    refX="8" refY="4" orient="auto">
-              <path d="M0,0 L8,4 L0,8 Z" fill="context-stroke"></path>
-            </marker>
+            <marker id="ah-idle" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" refX="8.5" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 Z" fill="#8c9ab5"></path></marker>
+            <marker id="ah-ok" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" refX="8.5" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 Z" fill="#22c55e"></path></marker>
+            <marker id="ah-accent" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" refX="8.5" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 Z" fill="#818cf8"></path></marker>
           </defs>
         </svg>
       </div>
@@ -1215,8 +1219,9 @@ function drawEdges(){
     hit.addEventListener('click',()=>{ state.edges=state.edges.filter(x=>x.id!==e.id); markDirty(); render(); });
     const p=document.createElementNS('http://www.w3.org/2000/svg','path');
     p.setAttribute('d',wirePath(a,tip)); p.setAttribute('fill','none');
-    p.setAttribute('stroke',run?cssVar('--ok'):'#7c8aa5'); p.setAttribute('stroke-width','2.5');
-    p.setAttribute('stroke-linecap','round'); p.setAttribute('marker-end','url(#arrowhead)');
+    p.setAttribute('stroke',run?'#22c55e':'#8c9ab5'); p.setAttribute('stroke-width',run?'3':'2.75');
+    p.setAttribute('stroke-linecap','round'); p.setAttribute('marker-end',run?'url(#ah-ok)':'url(#ah-idle)');
+    if(run){ p.setAttribute('stroke-dasharray','7 5'); p.setAttribute('class','edge-flow'); }
     g.appendChild(hit); g.appendChild(p);
     const srcRoute=(byId[e.source]||{}).config&&byId[e.source].config.onError==='route';
     if(e.label || srcRoute){  // routing label — branch (true/false) or error-output
@@ -1262,8 +1267,8 @@ function startWire(e,node){
   const svg=document.getElementById('edges');
   tempWire=document.createElementNS('http://www.w3.org/2000/svg','path');
   tempWire.setAttribute('fill','none'); tempWire.setAttribute('stroke',cssVar('--accent2'));
-  tempWire.setAttribute('stroke-width','2.5'); tempWire.setAttribute('stroke-dasharray','5 4');
-  tempWire.setAttribute('marker-end','url(#arrowhead)');
+  tempWire.setAttribute('stroke-width','2.75'); tempWire.setAttribute('stroke-dasharray','5 4');
+  tempWire.setAttribute('marker-end','url(#ah-accent)');
   svg.appendChild(tempWire);
   function mv(ev){ const b=screenToWorld(ev.clientX,ev.clientY); tempWire.setAttribute('d',wirePath(a,b)); }
   function up(ev){
