@@ -260,6 +260,14 @@
   .runchev{color:var(--muted);font-size:18px}
   .rundetail-head{display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap}
   .reflink{color:var(--accent2);cursor:pointer;text-decoration:underline}
+  .ls-node{cursor:pointer}
+  .ls-node rect{transition:filter .12s}
+  .ls-node:hover rect{filter:brightness(1.25)}
+  .ls-node.sel rect{stroke:#fff;stroke-width:2}
+  .ls-detail-h{font-size:15px;font-weight:700;color:var(--text);margin-bottom:4px}
+  .ls-kind{display:inline-block;font-size:10px;padding:2px 8px;border-radius:6px;margin-bottom:12px;text-transform:uppercase;letter-spacing:.5px}
+  .ls-prop{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.05);font-size:12.5px}
+  .ls-prop span{color:var(--muted)}.ls-prop b{color:var(--text);font-weight:600}
   .conn-row{display:flex;align-items:center;gap:10px;padding:11px 10px;border:1px solid var(--line);
     border-radius:10px;margin-bottom:9px;background:var(--panel)}
   .conn-row .ci{width:30px;height:30px;border-radius:8px;display:grid;place-items:center;font-size:15px;
@@ -475,6 +483,7 @@
     <button class="btn ghost" onclick="loadSample()">↻ Sample</button>
     <button class="btn save" id="saveBtn" onclick="saveCurrentApp()">💾 Save</button>
     <button class="btn ghost" onclick="openLibrary()">📁 My Apps</button>
+    <button class="btn ghost" onclick="openLandscape()" title="Knowledge graph of your data landscape">📊 Landscape</button>
     <button class="btn ghost" onclick="openRuns()" title="Execution history">🕘 Runs</button>
     <button class="btn ghost" onclick="openSettings()" title="Connections & settings">⚙ Settings</button>
     <button class="btn ghost" onclick="exportApp()">⤓ Export</button>
@@ -538,6 +547,19 @@
         <button class="btn ghost" onclick="closeLibrary()">✕</button>
       </div>
       <div class="modal-body" id="libList"></div>
+    </div>
+  </div>
+
+  <!-- Knowledge graph · Data landscape -->
+  <div class="modal-bg" id="landscapeModal" onclick="if(event.target===this)closeLandscape()">
+    <div class="modal" style="max-width:920px;width:920px;max-height:84vh">
+      <div class="modal-head"><h3>📊 Data landscape — knowledge graph</h3>
+        <button class="btn ghost" style="margin-left:auto" onclick="closeLandscape()">✕</button>
+      </div>
+      <div class="modal-body" style="display:flex;gap:0;padding:0;min-height:440px">
+        <div id="lsGraph" style="flex:1;position:relative;overflow:auto;border-right:1px solid var(--line)"></div>
+        <div id="lsDetail" style="width:280px;flex:none;padding:16px;overflow:auto"></div>
+      </div>
     </div>
   </div>
 
@@ -1453,7 +1475,7 @@ document.addEventListener('keydown',e=>{
   if(meta && e.key.toLowerCase()==='z' && !typing){ e.preventDefault(); e.shiftKey?redo():undo(); return; }
   if(meta && e.key.toLowerCase()==='y' && !typing){ e.preventDefault(); redo(); return; }
   if(e.key==='?' && !typing){ e.preventDefault(); openHelp(); return; }
-  if(e.key==='Escape'){ closePalette(); closeHelp(); closeRuns(); closeSettings(); }
+  if(e.key==='Escape'){ closePalette(); closeHelp(); closeRuns(); closeSettings(); closeLandscape(); }
   if((e.key==='Delete'||e.key==='Backspace')&&state.sel&&!typing){ deleteNode(state.sel); }
 });
 window.addEventListener('beforeunload',e=>{ if(state.dirty){ e.preventDefault(); e.returnValue=''; } });
@@ -2294,6 +2316,7 @@ function paletteCommands(){
     {label:'My apps / library', hint:'', act:()=>openLibrary()},
     {label:'Executions history', hint:'🕘', act:()=>openRuns()},
     {label:'Connections / settings', hint:'⚙', act:()=>openSettings()},
+    {label:'Data landscape (knowledge graph)', hint:'📊', act:()=>openLandscape()},
     {label:'Fit view to flow', hint:'', act:()=>resetView()},
     {label:'Tidy up (auto-layout)', hint:'✦', act:()=>tidyUp()},
     {label:'Undo', hint:'⌘Z', act:()=>undo()},
@@ -2363,6 +2386,61 @@ function newApp(){
 
 function openLibrary(){ document.getElementById('libModal').classList.add('show'); renderLibrary(); }
 function closeLibrary(){ document.getElementById('libModal').classList.remove('show'); }
+
+/* ---- Knowledge graph · Data landscape ---- */
+let _LS=null, _lsSel=null;
+async function openLandscape(){ document.getElementById('landscapeModal').classList.add('show');
+  document.getElementById('lsGraph').innerHTML='<div class="applist-empty">Loading…</div>';
+  try{ _LS=await apiJSON('/api/data/landscape'); }catch(e){ document.getElementById('lsGraph').innerHTML='<div class="applist-empty">⚠ Cannot load landscape.</div>'; return; }
+  renderLandscape(); }
+function closeLandscape(){ document.getElementById('landscapeModal').classList.remove('show'); }
+function renderLandscape(){
+  const nodes=_LS.nodes, edges=_LS.edges;
+  // layered layout: sources at layer 0, models by lineage depth
+  const layer={}; nodes.forEach(n=>layer[n.id]=n.kind==='source'?0:1);
+  const adj={}; nodes.forEach(n=>adj[n.id]=[]); edges.forEach(e=>{ if(adj[e.source])adj[e.source].push(e.target); });
+  for(let i=0;i<6;i++) edges.forEach(e=>{ if(layer[e.target]!=null) layer[e.target]=Math.max(layer[e.target],(layer[e.source]||0)+1); });
+  const byL={}; nodes.forEach(n=>{(byL[layer[n.id]]=byL[layer[n.id]]||[]).push(n);});
+  const COLW=200, NW=150, NH=46, VGAP=24;
+  const pos={}; let maxRow=0;
+  Object.keys(byL).sort((a,b)=>a-b).forEach(L=>{ byL[L].forEach((n,i)=>{ pos[n.id]={x:30+L*COLW,y:30+i*(NH+VGAP)}; maxRow=Math.max(maxRow,i); }); });
+  const W=30+(Math.max(...Object.values(layer))+1)*COLW+NW, H=30+(maxRow+1)*(NH+VGAP)+20;
+  const col=n=>n.kind==='source'?'#0ea5e9':'#f2682a';
+  let svg=`<svg width="${W}" height="${H}" style="display:block">`;
+  edges.forEach(e=>{ const a=pos[e.source],b=pos[e.target]; if(!a||!b)return;
+    const x1=a.x+NW,y1=a.y+NH/2,x2=b.x,y2=b.y+NH/2,mx=(x1+x2)/2;
+    svg+=`<path d="M ${x1} ${y1} C ${mx} ${y1}, ${mx} ${y2}, ${x2} ${y2}" fill="none" stroke="#46536b" stroke-width="1.6"/>`; });
+  nodes.forEach(n=>{ const p=pos[n.id];
+    svg+=`<g class="ls-node${_lsSel===n.id?' sel':''}" onclick="lsSelect('${n.id}')">
+      <rect x="${p.x}" y="${p.y}" width="${NW}" height="${NH}" rx="9" fill="${col(n)}22" stroke="${col(n)}" stroke-width="1.4"/>
+      <rect x="${p.x}" y="${p.y}" width="4" height="${NH}" rx="2" fill="${col(n)}"/>
+      <text x="${p.x+14}" y="${p.y+20}" fill="#e8eef7" font-size="12.5" font-weight="600">${esc(n.label.slice(0,18))}</text>
+      <text x="${p.x+14}" y="${p.y+36}" fill="#8aa0c0" font-size="10">${esc(n.kind)}</text></g>`; });
+  svg+='</svg>';
+  document.getElementById('lsGraph').innerHTML=svg;
+  if(!_lsSel) document.getElementById('lsDetail').innerHTML='<div class="applist-empty">Click a node to inspect it, then build an agent on it.</div>';
+}
+function lsSelect(id){ _lsSel=id; renderLandscape(); const n=_LS.nodes.find(x=>x.id===id); if(!n)return;
+  const col=n.kind==='source'?'#0ea5e9':'#f2682a';
+  let h=`<div class="ls-detail-h">${esc(n.label)}</div><span class="ls-kind" style="background:${col}22;color:${col}">${esc(n.kind)}</span>`;
+  h+=Object.entries(n.detail||{}).map(([k,v])=>`<div class="ls-prop"><span>${esc(k)}</span><b>${esc(v==null?'—':v)}</b></div>`).join('');
+  h+=`<button class="btn primary" style="width:100%;margin-top:14px" onclick="buildFromLandscape('${id}')">🛠 Build agent on this →</button>`;
+  document.getElementById('lsDetail').innerHTML=h;
+}
+function buildFromLandscape(id){
+  const n=_LS.nodes.find(x=>x.id===id); if(!n)return;
+  closeLandscape(); setMode('builder'); state.nodes=[]; state.edges=[]; state.results={}; state.sel=null;
+  const q=addNodeAt('input.text',40,160,{label:'Question',value:''});
+  let mid;
+  if(n.kind==='source') mid=addNodeAt('source.trino',360,140,{label:n.label,connectionId:n.connectionId,sql:'SELECT * FROM '+(n.detail.schema||'t')+' LIMIT 50'});
+  else mid=addNodeAt('dbt.lineage',360,140,{label:n.label+' lineage',model:n.model});
+  const ai=addNodeAt('model.bedrock',700,160,{label:'AI Agent',prompt:'@{question}\n\nData:\n@{'+mid.id+'}\n\nSummarize and recommend.'});
+  const out=addNodeAt('output.document',1040,160,{title:n.label+' Brief',template:'# @{title}\n@{ai}'});
+  link(q.id,mid.id); link(mid.id,ai.id); link(ai.id,out.id);
+  document.getElementById('appName').value=n.label+' Agent';
+  state.appId=null; render(); resetView(); markClean(); resetHistory();
+  flashHint('🛠 starter agent built from '+n.label);
+}
 
 /* ---- Settings · Connections ---- */
 function openSettings(){ document.getElementById('settingsModal').classList.add('show'); renderConnections(); }

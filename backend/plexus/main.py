@@ -41,6 +41,47 @@ def health():
     return {"ok": True, "demoMode": settings.demo_mode}
 
 
+# dbt models + lineage for the knowledge-graph / data-landscape view (mirrors the
+# dbt MCP server; swap for a real manifest.json parse in production).
+_DBT_MODELS = {
+    "stg_incidents": {"materialized": "view", "tests": 4, "fresh_min": 12},
+    "stg_assets": {"materialized": "view", "tests": 3, "fresh_min": 12},
+    "dim_business_unit": {"materialized": "table", "rows": 8, "tests": 2, "fresh_min": 35},
+    "fct_open_p1": {"materialized": "incremental", "rows": 7, "tests": 5, "fresh_min": 9},
+    "mart_exec_brief": {"materialized": "table", "tests": 2, "fresh_min": 40},
+}
+_DBT_LINEAGE = [("stg_incidents", "fct_open_p1"), ("stg_assets", "fct_open_p1"),
+                ("dim_business_unit", "fct_open_p1"), ("fct_open_p1", "mart_exec_brief")]
+# which registered source feeds which staging model (stable demo connection ids)
+_SRC_TO_MODEL = [("conn_incidentdb", "stg_incidents"), ("conn_threatintel", "stg_assets"),
+                 ("conn_cloudlogs", "stg_incidents")]
+
+
+@app.get("/api/data/landscape")
+def data_landscape():
+    """Knowledge graph of the data landscape: registered source clusters + dbt
+    models + lineage — so analysts see what exists and what to build on."""
+    nodes, edges = [], []
+    src_ids = set()
+    for c in connections.list():
+        if c.get("kind") == "trino":
+            nid = "src:" + c["id"]
+            src_ids.add(c["id"])
+            nodes.append({"id": nid, "label": c["label"], "kind": "source",
+                          "detail": {"host": c.get("host"), "catalog": c.get("catalog"),
+                                     "schema": c.get("schema"), "auth": c.get("authType")},
+                          "connectionId": c["id"]})
+    for m, meta in _DBT_MODELS.items():
+        nodes.append({"id": "model:" + m, "label": m, "kind": "model",
+                      "detail": meta, "model": m})
+    for a, b in _DBT_LINEAGE:
+        edges.append({"source": "model:" + a, "target": "model:" + b})
+    for s, m in _SRC_TO_MODEL:
+        if s in src_ids:
+            edges.append({"source": "src:" + s, "target": "model:" + m})
+    return {"nodes": nodes, "edges": edges}
+
+
 @app.get("/api/mcp/servers")
 def mcp_servers():
     """The MCP server allow-list (built-in demo + admin-registered) for the

@@ -115,3 +115,14 @@ def test_runs_history_groups_executions():
     assert runs and runs[0]["nodes"] >= 1 and runs[0]["status"] in ("success", "error")
     detail = client.get(f"/api/runs/{runs[0]['run_id']}").json()
     assert any(r["node_type"] == "output.text" for r in detail)
+
+
+def test_data_landscape_graph():
+    g = client.get("/api/data/landscape").json()
+    kinds = {n["kind"] for n in g["nodes"]}
+    assert "source" in kinds and "model" in kinds
+    assert any(n["kind"] == "source" for n in g["nodes"])      # trino clusters as sources
+    assert g["edges"]                                          # lineage present
+    # every edge references existing nodes
+    ids = {n["id"] for n in g["nodes"]}
+    assert all(e["source"] in ids and e["target"] in ids for e in g["edges"])
