@@ -61,14 +61,18 @@
     padding:6px 14px;border-radius:20px;border:1px solid var(--line);z-index:5;pointer-events:none}
   .zoombar{position:absolute;bottom:14px;left:14px;display:flex;gap:6px;z-index:6}
   .zoombar button{width:30px;height:30px;border-radius:8px;background:var(--panel2);
-    border:1px solid var(--line);color:var(--text);font-size:15px;display:grid;place-items:center}
+    border:1px solid var(--line);color:var(--text);font-size:15px;display:grid;place-items:center;cursor:pointer}
+  .zoombar button:hover{border-color:var(--accent2);color:var(--accent2)}
+  .minimap{position:absolute;bottom:14px;right:14px;z-index:6;border:1px solid var(--line);
+    border-radius:10px;background:rgba(11,15,23,.82);box-shadow:0 8px 24px rgba(0,0,0,.4);cursor:pointer}
 
   /* node */
   .node{position:absolute;width:236px;background:var(--panel2);border:1px solid var(--line);
     border-radius:12px;z-index:2;box-shadow:0 6px 22px rgba(0,0,0,.35);user-select:none}
   .node.sel{border-color:var(--accent2);box-shadow:0 0 0 2px rgba(129,140,248,.35),0 8px 26px rgba(0,0,0,.45)}
-  .node .nhead{display:flex;align-items:center;gap:8px;padding:9px 11px;cursor:grab;
-    border-bottom:1px solid var(--line);border-radius:12px 12px 0 0}
+  .node .nacc{position:absolute;top:0;left:0;right:0;height:3px;border-radius:12px 12px 0 0;opacity:.9;z-index:1}
+  .node .nhead{display:flex;align-items:center;gap:8px;padding:11px 11px 9px;cursor:grab;
+    border-bottom:1px solid var(--line);border-radius:12px 12px 0 0;position:relative}
   .node .nhead:active{cursor:grabbing}
   .nico{width:22px;height:22px;border-radius:6px;display:grid;place-items:center;font-size:12px;flex-shrink:0}
   .ntitle{font-size:12.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
@@ -471,10 +475,13 @@
         </svg>
       </div>
       <div class="zoombar">
-        <button onclick="zoomBy(1.15)">+</button>
-        <button onclick="zoomBy(0.87)">−</button>
-        <button onclick="resetView()" title="Fit">⤢</button>
+        <button onclick="zoomBy(1.15)" title="Zoom in">+</button>
+        <button onclick="zoomBy(0.87)" title="Zoom out">−</button>
+        <button onclick="resetView()" title="Fit to flow">⤢</button>
+        <button onclick="tidyUp()" title="Tidy up — auto-layout">✦</button>
       </div>
+      <canvas class="minimap" id="minimap" width="220" height="150"
+              title="Minimap — click to jump"></canvas>
       <div class="runlog" id="runlog"></div>
     </div>
 
@@ -1088,6 +1095,7 @@ function screenToWorld(sx,sy){
 function applyView(){
   document.getElementById('canvas').style.transform=
     `translate(${state.view.x}px,${state.view.y}px) scale(${state.view.scale})`;
+  if(typeof drawMinimap==='function') drawMinimap();
 }
 function zoomBy(f){
   const r=wrap.getBoundingClientRect(), cx=r.width/2, cy=r.height/2;
@@ -1110,6 +1118,52 @@ function resetView(){
   applyView(); drawEdges();
 }
 wrap.addEventListener('wheel',e=>{ if(e.ctrlKey||e.metaKey){e.preventDefault(); zoomBy(e.deltaY<0?1.1:0.9);} },{passive:false});
+
+/* Tidy up — layered auto-layout from the edge graph (like the generator). */
+function tidyUp(){
+  if(!state.nodes.length) return;
+  const ids=state.nodes.map(n=>n.id), adj={}, indeg={};
+  ids.forEach(i=>{adj[i]=[];indeg[i]=0;});
+  state.edges.forEach(e=>{ if(adj[e.source]&&indeg[e.target]!=null){adj[e.source].push(e.target);indeg[e.target]++;} });
+  const layer={}; ids.forEach(i=>layer[i]=0);
+  const rem={...indeg}; let q=ids.filter(i=>!indeg[i]);
+  while(q.length){ const i=q.shift(); adj[i].forEach(t=>{ layer[t]=Math.max(layer[t],layer[i]+1); if(--rem[t]===0)q.push(t); }); }
+  const byL={}; ids.forEach(i=>{(byL[layer[i]]=byL[layer[i]]||[]).push(i);});
+  Object.keys(byL).forEach(L=>byL[L].forEach((id,idx)=>{ const n=state.nodes.find(x=>x.id===id); n.x=60+(+L)*340; n.y=60+idx*180; }));
+  render(); resetView(); markDirty(); flashHint('✦ tidied up');
+}
+
+/* Minimap — scaled overview + click-to-jump. */
+function drawMinimap(){
+  const c=document.getElementById('minimap'); if(!c) return; const ctx=c.getContext('2d');
+  ctx.clearRect(0,0,c.width,c.height);
+  if(!state.nodes.length) return;
+  let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;
+  state.nodes.forEach(n=>{ minX=Math.min(minX,n.x); minY=Math.min(minY,n.y); maxX=Math.max(maxX,n.x+NODE_W); maxY=Math.max(maxY,n.y+150); });
+  const pad=10, W=c.width-pad*2, H=c.height-pad*2;
+  const s=Math.min(W/Math.max(1,maxX-minX), H/Math.max(1,maxY-minY));
+  const X=x=>pad+(x-minX)*s, Y=y=>pad+(y-minY)*s;
+  c._mm={minX,minY,s,pad};
+  // edges
+  ctx.strokeStyle='rgba(140,154,181,.5)'; ctx.lineWidth=1;
+  state.edges.forEach(e=>{ const a=state.nodes.find(n=>n.id===e.source), b=state.nodes.find(n=>n.id===e.target); if(!a||!b)return;
+    ctx.beginPath(); ctx.moveTo(X(a.x+NODE_W),Y(a.y+25)); ctx.lineTo(X(b.x),Y(b.y+25)); ctx.stroke(); });
+  // nodes
+  state.nodes.forEach(n=>{ const d=TYPES[n.type]||{color:'#888'}; ctx.fillStyle=hex(d.color);
+    const w=Math.max(6,NODE_W*s), h=Math.max(4,40*s); ctx.globalAlpha=.95;
+    ctx.fillRect(X(n.x),Y(n.y),w,h); ctx.globalAlpha=1; });
+  // viewport rect
+  const r=wrap.getBoundingClientRect(), v=state.view;
+  const vx=(-v.x)/v.scale, vy=(-v.y)/v.scale, vw=r.width/v.scale, vh=r.height/v.scale;
+  ctx.strokeStyle='rgba(129,140,248,.9)'; ctx.lineWidth=1.5;
+  ctx.strokeRect(X(vx),Y(vy),vw*s,vh*s);
+}
+(function bindMinimap(){ const c=document.getElementById('minimap'); if(!c) return;
+  c.addEventListener('mousedown',e=>{ const mm=c._mm; if(!mm) return; const rect=c.getBoundingClientRect();
+    const wx=mm.minX+(e.clientX-rect.left-mm.pad)/mm.s, wy=mm.minY+(e.clientY-rect.top-mm.pad)/mm.s;
+    const r=wrap.getBoundingClientRect();
+    state.view.x=r.width/2-wx*state.view.scale; state.view.y=r.height/2-wy*state.view.scale;
+    applyView(); drawEdges(); }); })();
 
 /* ============================================================
    PORTS / EDGE GEOMETRY
@@ -1141,7 +1195,8 @@ function renderNode(node){
   const r=state.results[node.id];
   const st=r?r.status:'idle';
   el.innerHTML=`
-    <div class="nhead" style="background:linear-gradient(180deg,${hex(d.color)}1a,transparent)">
+    <div class="nacc" style="background:${hex(d.color)}"></div>
+    <div class="nhead" style="background:linear-gradient(180deg,${hex(d.color)}24,transparent)">
       <span class="nico" style="background:${hex(d.color)}22;color:${hex(d.color)}">${d.icon}</span>
       <div style="flex:1;min-width:0">
         <div class="ntitle">${esc(node.config.label||d.name)}</div>
@@ -2161,6 +2216,7 @@ function paletteCommands(){
     {label:'My apps / library', hint:'', act:()=>openLibrary()},
     {label:'Executions history', hint:'🕘', act:()=>openRuns()},
     {label:'Fit view to flow', hint:'', act:()=>resetView()},
+    {label:'Tidy up (auto-layout)', hint:'✦', act:()=>tidyUp()},
     {label:'Undo', hint:'⌘Z', act:()=>undo()},
     {label:'Redo', hint:'⌘⇧Z', act:()=>redo()},
     {label:'Switch to Chat mode', hint:'', act:()=>setMode('chat')},
